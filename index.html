@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="AI客服数据看板 - 实时监控AI客服接待效率与问题覆盖率">
+  <title>AI客服数据看板 - 接待效率分析</title>
+  
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  
+  
+  <!-- Custom Styles -->
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- 侧边栏 -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <div class="sidebar-logo">🤖</div>
+        <h1 class="sidebar-title">AI 客服中心</h1>
+      </div>
+      
+      <nav class="sidebar-nav">
+        <div class="nav-section">
+          <a href="index.html" class="nav-item active">
+            <span class="nav-item-icon">📊</span>
+            <span>数据看板</span>
+          </a>
+          <a href="#" class="nav-item">
+            <span class="nav-item-icon">💬</span>
+            <span>接待数据</span>
+          </a>
+          <a href="#" class="nav-item">
+            <span class="nav-item-icon">📚</span>
+            <span>问题场景</span>
+            <span class="nav-item-badge">12</span>
+          </a>
+        </div>
+        
+        <div class="nav-section">
+          <div class="nav-section-title">配置管理</div>
+          <a href="#" class="nav-item">
+            <span class="nav-item-icon">⚙️</span>
+            <span>规则引擎</span>
+          </a>
+          <a href="#" class="nav-item">
+            <span class="nav-item-icon">📜</span>
+            <span>训练历史</span>
+          </a>
+        </div>
+      </nav>
+      
+      <div class="sidebar-footer">
+        <div class="user-info">
+          <div class="user-avatar">李</div>
+          <div class="user-details">
+            <div class="user-name">李明</div>
+            <div class="user-role">管理员</div>
+          </div>
+        </div>
+      </div>
+    </aside>
+    
+    <!-- 主内容区 -->
+    <main class="main-content">
+      <!-- 顶部导航 -->
+      <header class="top-header">
+        <div class="breadcrumb">
+          <a href="#" class="breadcrumb-item">首页</a>
+          <span class="breadcrumb-separator">/</span>
+          <span class="breadcrumb-current">接待效率分析</span>
+        </div>
+        
+        <div class="header-actions">
+          <div class="date-filter">
+            <button class="date-btn">昨日</button>
+            <button class="date-btn active">近7日</button>
+            <button class="date-btn">自定义</button>
+          </div>
+          <button class="btn-primary">
+            <span>📥</span>
+            导出报告
+          </button>
+          <button class="icon-btn">🔄</button>
+        </div>
+      </header>
+      
+      <!-- 页面内容 -->
+      <div class="page-content">
+        <!-- 页面标题 -->
+        <div class="page-header">
+          <h2 class="page-title">AI 接待效率分析</h2>
+          <p class="page-subtitle">监控AI客服的接待指标，分析转人工和转化数据，持续优化服务效率</p>
+        </div>
+        
+        <!-- 核心统计卡片 -->
+        <div class="stats-grid">
+          <div class="stat-card blue">
+            <div class="stat-header">
+              <div class="stat-icon blue">💬</div>
+              <span class="stat-change up">+12.5%</span>
+            </div>
+            <div class="stat-label">AI接待人数</div>
+            <div class="stat-value" id="stat-ai-reception">0</div>
+          </div>
+          
+          <div class="stat-card orange">
+            <div class="stat-header">
+              <div class="stat-icon orange">⚠️</div>
+              <span class="stat-change up">+2.1%</span>
+            </div>
+            <div class="stat-label">三句话无响应人数</div>
+            <div class="stat-value" id="stat-no-response">0</div>
+          </div>
+          
+          <div class="stat-card purple">
+            <div class="stat-header">
+              <div class="stat-icon purple">👤</div>
+              <span class="stat-change down">-5.3%</span>
+            </div>
+            <div class="stat-label">转人工人数</div>
+            <div class="stat-value" id="stat-handover">0</div>
+          </div>
+          
+          <div class="stat-card cyan">
+            <div class="stat-header">
+              <div class="stat-icon cyan">📈</div>
+              <span class="stat-change up">环比 4.2%</span>
+            </div>
+            <div class="stat-label">AI转接率</div>
+            <div class="stat-value small"><span id="stat-handover-rate">0</span><span class="stat-suffix">%</span></div>
+          </div>
+          
+          <div class="stat-card green">
+            <div class="stat-header">
+              <div class="stat-icon green">💰</div>
+              <span class="stat-change up">+0.8%</span>
+            </div>
+            <div class="stat-label">询单支付转化率</div>
+            <div class="stat-value small"><span id="stat-conversion">0</span><span class="stat-suffix">%</span></div>
+          </div>
+        </div>
+        
+        <!-- 接待趋势分析 -->
+        <div class="chart-container">
+          <div class="chart-header">
+            <h3 class="chart-title">接待趋势分析</h3>
+            <div class="chart-legend">
+              <div class="legend-item">
+                <span class="legend-dot blue"></span>
+                <span>AI接待</span>
+              </div>
+              <div class="legend-item">
+                <span class="legend-dot purple"></span>
+                <span>转人工</span>
+              </div>
+            </div>
+          </div>
+          <div class="chart-body">
+            <canvas id="trendChart"></canvas>
+          </div>
+        </div>
+        
+        <!-- 覆盖率与分类优化 -->
+        <div class="coverage-section">
+          <!-- 左侧：问题覆盖统计 -->
+          <div class="coverage-card">
+            <div class="coverage-header">
+              <h3 class="coverage-title">问题覆盖统计</h3>
+            </div>
+            <div class="coverage-stats">
+              <div class="coverage-stat">
+                <div class="coverage-stat-value"><span id="total-questions">0</span> <span style="font-size: 14px; color: #6B7280;">咨询问题</span></div>
+              </div>
+              <div class="coverage-stat">
+                <div class="coverage-stat-value"><span id="answered-questions">0</span> <span style="font-size: 14px; color: #6B7280;">已回复</span></div>
+              </div>
+            </div>
+            <div class="coverage-progress">
+              <div class="progress-bar">
+                <div class="progress-fill" style="width: 91%"></div>
+              </div>
+              <div class="progress-label">
+                <span class="progress-text">↑ 较上周 12.5%</span>
+                <span class="progress-value">91%</span>
+              </div>
+            </div>
+          </div>
+          
+          <!-- 右侧：覆盖率环形图 -->
+          <div class="coverage-card">
+            <div class="coverage-header">
+              <h3 class="coverage-title">问题覆盖率</h3>
+            </div>
+            <div class="circular-progress-container">
+              <div class="circular-progress">
+                <svg width="160" height="160" viewBox="0 0 160 160">
+                  <defs>
+                    <linearGradient id="progressGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                      <stop offset="0%" style="stop-color:#10B981"/>
+                      <stop offset="100%" style="stop-color:#3B82F6"/>
+                    </linearGradient>
+                  </defs>
+                  <circle class="bg" cx="80" cy="80" r="70"/>
+                  <circle class="progress" cx="80" cy="80" r="70" 
+                    stroke-dasharray="439.82" 
+                    stroke-dashoffset="439.82"/>
+                </svg>
+                <div class="circular-value">
+                  <div class="circular-value-number"><span id="coverage-rate">0</span>%</div>
+                  <div class="circular-value-label">覆盖完成</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- 分类优化表格 -->
+        <div class="table-container">
+          <div class="table-header">
+            <div>
+              <h3 class="table-title">分类优化</h3>
+            </div>
+            <div class="table-actions">
+              <div class="filter-tabs">
+                <button class="filter-tab active">全部分类</button>
+                <button class="filter-tab">低覆盖</button>
+                <button class="filter-tab">待处理</button>
+              </div>
+            </div>
+          </div>
+          
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>场景/分类名称</th>
+                <th>咨询量</th>
+                <th>覆盖率</th>
+                <th>识别问题</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="category-table-body">
+              <!-- 动态生成 -->
+            </tbody>
+          </table>
+          
+          <div class="pagination">
+            <span class="pagination-info">显示 1 至 5 共 130 条</span>
+            <button class="page-btn" disabled>‹</button>
+            <button class="page-btn active">1</button>
+            <button class="page-btn">2</button>
+            <button class="page-btn">3</button>
+            <button class="page-btn">›</button>
+          </div>
+        </div>
+        
+        <!-- 待优化问题 -->
+        <div class="table-container" style="margin-top: 24px;">
+          <div class="table-header">
+            <div>
+              <h3 class="table-title">待优化问题</h3>
+              <p class="table-subtitle">AI置信度较低或无法回答的问题汇总</p>
+            </div>
+            <a href="#" class="link-text">查看全部</a>
+          </div>
+          
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>咨询主题</th>
+                <th>检测问题</th>
+                <th>出现频次</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="pending-issues-body">
+              <!-- 动态生成 -->
+            </tbody>
+          </table>
+        </div>
+        
+        <!-- 底部信息条 -->
+        <div class="bottom-bar">
+          <div class="bottom-bar-content">
+            <div class="bottom-bar-icon">💡</div>
+            <div>
+              <div class="bottom-bar-text">本周预估节省人力成本</div>
+              <div class="bottom-bar-sub">基于AI自动解决率计算</div>
+            </div>
+          </div>
+          <div class="staff-avatars">
+            <div class="staff-avatar red">1</div>
+            <div class="staff-avatar yellow">0</div>
+            <div class="staff-avatar blue">2</div>
+            <div class="staff-avatar gray">6</div>
+            <span class="staff-label">客服人力</span>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+  
+  <!-- Scripts -->
+  <script type="module" src="/js/main.js"></script>
+</body>
+</html>
