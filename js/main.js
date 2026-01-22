@@ -1,5 +1,6 @@
 /**
- * AI客服数据看板 - 主页面逻辑
+ * AI客服数据看板 - 接待效率页面逻辑
+ * P1优先级：辅助售前接待效率
  */
 
 import { Chart, registerables } from 'chart.js';
@@ -11,29 +12,46 @@ Chart.register(...registerables);
 
 // DOM 加载完成后初始化
 document.addEventListener('DOMContentLoaded', function() {
-  initStats();
+  initReceptionStats();
+  initInquiryStats();
   initTrendChart();
-  initCoverageChart();
-  initCategoryTable();
-  initPendingIssuesTable();
   initDateFilter();
   initFilterTabs();
 });
 
 /**
- * 初始化统计卡片数据
+ * 初始化接待效率统计卡片数据（每日统计）
  */
-function initStats() {
-  const stats = MockData.stats;
+function initReceptionStats() {
+  const stats = MockData.receptionStats;
   
-  // 动画计数器
+  // 动画计数器 - 每日统计指标
   animateValue('stat-ai-reception', 0, stats.aiReceptionTotal.value, 1500);
   animateValue('stat-no-response', 0, stats.noResponseCount.value, 1200);
   animateValue('stat-handover', 0, stats.handoverToHuman.value, 1300);
+  animateValue('stat-no-answer-handover', 0, stats.noAnswerHandover.value, 1400);
   
   // 设置百分比值
-  document.getElementById('stat-handover-rate').textContent = stats.handoverRate.value;
-  document.getElementById('stat-conversion').textContent = stats.inquiryConversion.value;
+  setTimeout(() => {
+    document.getElementById('stat-handover-rate').textContent = stats.handoverRate.value;
+    document.getElementById('stat-no-answer-rate').textContent = stats.noAnswerHandoverRate.value;
+  }, 500);
+}
+
+/**
+ * 初始化询单统计数据（三日内统计）
+ */
+function initInquiryStats() {
+  const stats = MockData.inquiryStats;
+
+  // 动画计数器 - 询单指标
+  animateValue('stat-inquiry-count', 0, stats.inquiryCount.value, 1500);
+  animateValue('stat-payment-count', 0, stats.paymentCount.value, 1400);
+
+  // 设置转化率
+  setTimeout(() => {
+    document.getElementById('stat-conversion').textContent = stats.conversionRate.value;
+  }, 500);
 }
 
 /**
@@ -172,122 +190,6 @@ function initTrendChart() {
 }
 
 /**
- * 初始化覆盖率圆形图表
- */
-function initCoverageChart() {
-  const progressElement = document.querySelector('.circular-progress .progress');
-  if (!progressElement) return;
-  
-  const coverage = MockData.coverageStats;
-  const circumference = 2 * Math.PI * 70; // r = 70
-  const offset = circumference - (coverage.coverageRate / 100) * circumference;
-  
-  progressElement.style.strokeDasharray = circumference;
-  progressElement.style.strokeDashoffset = circumference;
-  
-  // 动画效果
-  setTimeout(() => {
-    progressElement.style.strokeDashoffset = offset;
-  }, 500);
-  
-  // 更新数值
-  document.getElementById('coverage-rate').textContent = coverage.coverageRate;
-  animateValue('total-questions', 0, coverage.totalQuestions, 1500);
-  animateValue('answered-questions', 0, coverage.answeredQuestions, 1500);
-}
-
-/**
- * 初始化问题分类表格
- */
-function initCategoryTable() {
-  const tbody = document.getElementById('category-table-body');
-  if (!tbody) return;
-  
-  const categories = MockData.categoryList;
-  const iconColors = ['blue', 'purple', 'orange', 'green', 'red'];
-  const icons = ['📦', '🔄', '💇', '🎁', '🖼️'];
-  
-  categories.forEach((item, index) => {
-    const row = document.createElement('tr');
-    
-    const statusClass = item.status === 'optimized' ? 'success' : 
-                       item.status === 'warning' ? 'warning' : 'danger';
-    const statusText = item.status === 'optimized' ? '已优化' : 
-                      item.status === 'warning' ? '需优化' : '待处理';
-    
-    const progressColor = item.coverageRate >= 80 ? 'green' : 
-                         item.coverageRate >= 50 ? 'orange' : 'red';
-    
-    const issuesHtml = item.issues.length > 0 
-      ? item.issues.map(issue => `<span class="tag warning">${issue}</span>`).join(' ')
-      : `<span class="tag success">${statusText}</span>`;
-    
-    const actionText = item.status === 'optimized' ? '详情' : 
-                      item.status === 'warning' ? '优化' : '创建场景';
-    const actionClass = item.status === 'optimized' ? '' : 'primary';
-    
-    row.innerHTML = `
-      <td>
-        <div style="display: flex; align-items: center;">
-          <div class="category-icon ${iconColors[index % iconColors.length]}">${icons[index % icons.length]}</div>
-          <div>
-            <div class="table-cell-main">${item.name}</div>
-            <div class="table-cell-sub">${item.category}</div>
-          </div>
-        </div>
-      </td>
-      <td>
-        <div class="table-cell-main">${item.volume.toLocaleString()}</div>
-        <div class="table-cell-sub">${item.volumeTrend}</div>
-      </td>
-      <td>
-        <div style="display: flex; align-items: center; gap: 8px;">
-          <span style="font-weight: 600;">${item.coverageRate}%</span>
-          <div class="mini-progress">
-            <div class="fill ${progressColor}" style="width: ${item.coverageRate}%"></div>
-          </div>
-        </div>
-      </td>
-      <td>${issuesHtml}</td>
-      <td>
-        <button class="btn-outline ${actionClass}">${actionText}</button>
-      </td>
-    `;
-    
-    tbody.appendChild(row);
-  });
-}
-
-/**
- * 初始化待优化问题表格
- */
-function initPendingIssuesTable() {
-  const tbody = document.getElementById('pending-issues-body');
-  if (!tbody) return;
-  
-  const issues = MockData.pendingIssues;
-  
-  issues.forEach(item => {
-    const row = document.createElement('tr');
-    
-    const issueClass = item.issue === '低置信度' ? 'warning' : 
-                      item.issue === '无法回答' ? 'danger' : 'info';
-    
-    row.innerHTML = `
-      <td>
-        <div class="table-cell-main">${item.topic}</div>
-        <div class="table-cell-sub">${item.description}</div>
-      </td>
-      <td><span class="tag ${issueClass}">${item.issue}</span></td>
-      <td style="font-weight: 600;">${item.frequency}</td>
-      <td><a href="#" class="link-text">${item.action}</a></td>
-    `;
-    
-    tbody.appendChild(row);
-  });
-}
-
-/**
  * 初始化日期筛选器
  */
 function initDateFilter() {
@@ -297,8 +199,6 @@ function initDateFilter() {
     btn.addEventListener('click', function() {
       dateButtons.forEach(b => b.classList.remove('active'));
       this.classList.add('active');
-      
-      // 这里可以添加实际的数据刷新逻辑
       console.log('日期筛选:', this.textContent);
     });
   });
@@ -314,8 +214,6 @@ function initFilterTabs() {
     tab.addEventListener('click', function() {
       filterTabs.forEach(t => t.classList.remove('active'));
       this.classList.add('active');
-      
-      // 这里可以添加实际的筛选逻辑
       console.log('筛选:', this.textContent);
     });
   });

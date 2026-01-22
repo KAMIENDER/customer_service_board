@@ -28,16 +28,11 @@
         <div class="nav-section">
           <a href="index.html" class="nav-item active">
             <span class="nav-item-icon">📊</span>
-            <span>数据看板</span>
+            <span>接待效率</span>
           </a>
-          <a href="#" class="nav-item">
+          <a href="coverage.html" class="nav-item">
             <span class="nav-item-icon">💬</span>
-            <span>接待数据</span>
-          </a>
-          <a href="#" class="nav-item">
-            <span class="nav-item-icon">📚</span>
-            <span>问题场景</span>
-            <span class="nav-item-badge">12</span>
+            <span>回复内容</span>
           </a>
         </div>
         
@@ -97,8 +92,8 @@
           <p class="page-subtitle">监控AI客服的接待指标，分析转人工和转化数据，持续优化服务效率</p>
         </div>
         
-        <!-- 核心统计卡片 -->
-        <div class="stats-grid">
+        <!-- 核心统计卡片 - 每日统计 -->
+        <div class="stats-grid" style="grid-template-columns: repeat(3, 1fr);">
           <div class="stat-card blue">
             <div class="stat-header">
               <div class="stat-icon blue">💬</div>
@@ -128,20 +123,64 @@
           
           <div class="stat-card cyan">
             <div class="stat-header">
-              <div class="stat-icon cyan">📈</div>
-              <span class="stat-change up">环比 4.2%</span>
+              <div class="stat-icon cyan">📊</div>
+              <span class="stat-change down">-4.2%</span>
             </div>
             <div class="stat-label">AI转接率</div>
             <div class="stat-value small"><span id="stat-handover-rate">0</span><span class="stat-suffix">%</span></div>
           </div>
           
-          <div class="stat-card green">
+          <div class="stat-card" style="background: linear-gradient(135deg, #FEE2E2 0%, #FECACA 100%);">
             <div class="stat-header">
-              <div class="stat-icon green">💰</div>
-              <span class="stat-change up">+0.8%</span>
+              <div class="stat-icon red">❓</div>
+              <span class="stat-change down">-8.2%</span>
             </div>
-            <div class="stat-label">询单支付转化率</div>
-            <div class="stat-value small"><span id="stat-conversion">0</span><span class="stat-suffix">%</span></div>
+            <div class="stat-label">无问答转人工人数</div>
+            <div class="stat-value" id="stat-no-answer-handover">0</div>
+          </div>
+          
+          <div class="stat-card" style="background: linear-gradient(135deg, #FCE7F3 0%, #FBCFE8 100%);">
+            <div class="stat-header">
+              <div class="stat-icon" style="background: rgba(236, 72, 153, 0.2); color: #EC4899;">📉</div>
+              <span class="stat-change down">-6.5%</span>
+            </div>
+            <div class="stat-label">无问答转接率</div>
+            <div class="stat-value small"><span id="stat-no-answer-rate">0</span><span class="stat-suffix">%</span></div>
+          </div>
+        </div>
+        
+        <!-- 询单相关统计 - 统计三日内 -->
+        <div class="chart-container" style="margin-bottom: 24px;">
+          <div class="chart-header">
+            <h3 class="chart-title">询单转化统计 <span style="font-size: 12px; color: #9CA3AF; font-weight: 400;">（统计周期：近三日）</span></h3>
+          </div>
+          <div class="stats-grid" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 0;">
+            <div class="stat-card green" style="margin: 0;">
+              <div class="stat-header">
+                <div class="stat-icon green">🛒</div>
+                <span class="stat-change up">+5.2%</span>
+              </div>
+              <div class="stat-label">AI询单人数</div>
+              <div class="stat-value" id="stat-inquiry-count">0</div>
+            </div>
+            
+            <div class="stat-card" style="background: linear-gradient(135deg, #FEF3C7 0%, #FDE68A 100%); margin: 0;">
+              <div class="stat-header">
+                <div class="stat-icon" style="background: rgba(245, 158, 11, 0.2); color: #F59E0B;">💳</div>
+                <span class="stat-change up">+8.6%</span>
+              </div>
+              <div class="stat-label">询单支付人数</div>
+              <div class="stat-value" id="stat-payment-count">0</div>
+            </div>
+            
+            <div class="stat-card" style="background: linear-gradient(135deg, #D1FAE5 0%, #A7F3D0 100%); margin: 0;">
+              <div class="stat-header">
+                <div class="stat-icon" style="background: rgba(16, 185, 129, 0.2); color: #10B981;">💰</div>
+                <span class="stat-change up">+0.8%</span>
+              </div>
+              <div class="stat-label">询单支付转化率</div>
+              <div class="stat-value small"><span id="stat-conversion">0</span><span class="stat-suffix">%</span></div>
+            </div>
           </div>
         </div>
         

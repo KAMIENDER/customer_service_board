@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="AI客服数据看板 - 问题覆盖与回复内容分析">
+  <title>AI客服数据看板 - 回复内容</title>
+  
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  
+  <!-- Custom Styles -->
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- 侧边栏 -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <div class="sidebar-logo">🤖</div>
+        <h1 class="sidebar-title">AI 客服中心</h1>
+      </div>
+      
+      <nav class="sidebar-nav">
+        <div class="nav-section">
+          <a href="index.html" class="nav-item">
+            <span class="nav-item-icon">📊</span>
+            <span>接待效率</span>
+          </a>
+          <a href="coverage.html" class="nav-item active">
+            <span class="nav-item-icon">💬</span>
+            <span>回复内容</span>
+          </a>
+        </div>
+        
+        <div class="nav-section">
+          <div class="nav-section-title">配置管理</div>
+          <a href="#" class="nav-item">
+            <span class="nav-item-icon">⚙️</span>
+            <span>规则引擎</span>
+          </a>
+          <a href="#" class="nav-item">
+            <span class="nav-item-icon">📜</span>
+            <span>训练历史</span>
+          </a>
+        </div>
+      </nav>
+      
+      <div class="sidebar-footer">
+        <div class="user-info">
+          <div class="user-avatar">李</div>
+          <div class="user-details">
+            <div class="user-name">李明</div>
+            <div class="user-role">管理员</div>
+          </div>
+        </div>
+      </div>
+    </aside>
+    
+    <!-- 主内容区 -->
+    <main class="main-content">
+      <!-- 顶部导航 -->
+      <header class="top-header">
+        <div class="breadcrumb">
+          <a href="index.html" class="breadcrumb-item">首页</a>
+          <span class="breadcrumb-separator">/</span>
+          <span class="breadcrumb-current">回复内容</span>
+        </div>
+        
+        <div class="header-actions">
+          <div class="date-filter">
+            <button class="date-btn">昨日</button>
+            <button class="date-btn active">近7日</button>
+            <button class="date-btn">自定义</button>
+          </div>
+          <button class="btn-primary">
+            <span>📥</span>
+            导出报告
+          </button>
+          <button class="icon-btn">🔄</button>
+        </div>
+      </header>
+      
+      <!-- 页面内容 -->
+      <div class="page-content">
+        <!-- 页面标题 -->
+        <div class="page-header">
+          <h2 class="page-title">问题覆盖与回复内容</h2>
+          <p class="page-subtitle">分析咨询问题的覆盖率，优化话术和回复内容，提升AI回答质量</p>
+        </div>
+        
+        <!-- 覆盖率统计卡片 -->
+        <div class="stats-grid" style="grid-template-columns: repeat(3, 1fr);">
+          <div class="stat-card blue">
+            <div class="stat-header">
+              <div class="stat-icon blue">❓</div>
+              <span class="stat-change up">+8.2%</span>
+            </div>
+            <div class="stat-label">咨询问题总数</div>
+            <div class="stat-value" id="stat-total-questions">0</div>
+          </div>
+          
+          <div class="stat-card green">
+            <div class="stat-header">
+              <div class="stat-icon green">✅</div>
+              <span class="stat-change up">+10.5%</span>
+            </div>
+            <div class="stat-label">已回复问题数</div>
+            <div class="stat-value" id="stat-answered">0</div>
+          </div>
+          
+          <div class="stat-card purple">
+            <div class="stat-header">
+              <div class="stat-icon purple">📈</div>
+              <span class="stat-change up">+2.3%</span>
+            </div>
+            <div class="stat-label">问题覆盖率</div>
+            <div class="stat-value small"><span id="stat-coverage-rate">0</span><span class="stat-suffix">%</span></div>
+          </div>
+        </div>
+        
+        <!-- 覆盖率详情 -->
+        <div class="coverage-section">
+          <!-- 左侧：覆盖率进度 -->
+          <div class="coverage-card">
+            <div class="coverage-header">
+              <h3 class="coverage-title">覆盖率趋势</h3>
+            </div>
+            <div class="chart-body" style="height: 250px;">
+              <canvas id="coverageChart"></canvas>
+            </div>
+          </div>
+          
+          <!-- 右侧：覆盖率环形图 -->
+          <div class="coverage-card">
+            <div class="coverage-header">
+              <h3 class="coverage-title">当前覆盖率</h3>
+            </div>
+            <div class="circular-progress-container">
+              <div class="circular-progress">
+                <svg width="160" height="160" viewBox="0 0 160 160">
+                  <defs>
+                    <linearGradient id="progressGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                      <stop offset="0%" style="stop-color:#10B981"/>
+                      <stop offset="100%" style="stop-color:#3B82F6"/>
+                    </linearGradient>
+                  </defs>
+                  <circle class="bg" cx="80" cy="80" r="70"/>
+                  <circle class="progress" cx="80" cy="80" r="70" 
+                    stroke-dasharray="439.82" 
+                    stroke-dashoffset="439.82"/>
+                </svg>
+                <div class="circular-value">
+                  <div class="circular-value-number"><span id="coverage-rate">0</span>%</div>
+                  <div class="circular-value-label">覆盖完成</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- 问题场景分类表格 -->
+        <div class="table-container">
+          <div class="table-header">
+            <div>
+              <h3 class="table-title">问题场景分类</h3>
+              <p class="table-subtitle">按场景分类统计咨询问题的覆盖情况</p>
+            </div>
+            <div class="table-actions">
+              <div class="filter-tabs">
+                <button class="filter-tab active">全部分类</button>
+                <button class="filter-tab">低覆盖</button>
+                <button class="filter-tab">待优化</button>
+              </div>
+            </div>
+          </div>
+          
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>场景名称</th>
+                <th>咨询量</th>
+                <th>覆盖率</th>
+                <th>问题识别</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="scene-table-body">
+              <!-- 动态生成 -->
+            </tbody>
+          </table>
+          
+          <div class="pagination">
+            <span class="pagination-info">显示 1 至 5 共 130 条</span>
+            <button class="page-btn" disabled>‹</button>
+            <button class="page-btn active">1</button>
+            <button class="page-btn">2</button>
+            <button class="page-btn">3</button>
+            <button class="page-btn">›</button>
+          </div>
+        </div>
+        
+        <!-- 待优化话术 -->
+        <div class="table-container" style="margin-top: 24px;">
+          <div class="table-header">
+            <div>
+              <h3 class="table-title">待优化话术</h3>
+              <p class="table-subtitle">需要补充或优化回复内容的问题</p>
+            </div>
+            <a href="#" class="link-text">查看全部</a>
+          </div>
+          
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>问题类型</th>
+                <th>示例问题</th>
+                <th>当前状态</th>
+                <th>出现频次</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="script-table-body">
+              <!-- 动态生成 -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+  </div>
+  
+  <!-- Scripts -->
+  <script type="module" src="/js/coverage.js"></script>
+</body>
+</html>
