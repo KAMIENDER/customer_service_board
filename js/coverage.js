@@ -263,14 +263,82 @@ function initScriptTable() {
  * 初始化日期筛选器
  */
 function initDateFilter() {
-  const dateButtons = document.querySelectorAll('.date-btn');
+  const dateButtons = document.querySelectorAll('.date-btn:not(.date-custom-btn)');
+  const customBtn = document.querySelector('.date-custom-btn');
+  const dropdown = document.getElementById('date-picker-dropdown');
+  const cancelBtn = document.getElementById('date-picker-cancel');
+  const confirmBtn = document.getElementById('date-picker-confirm');
+  const dateStart = document.getElementById('date-start');
+  const dateEnd = document.getElementById('date-end');
   
+  // 设置默认日期
+  const today = new Date();
+  const weekAgo = new Date(today);
+  weekAgo.setDate(today.getDate() - 7);
+
+  if (dateEnd) dateEnd.value = formatDate(today);
+  if (dateStart) dateStart.value = formatDate(weekAgo);
+
+  // 普通日期按钮点击
   dateButtons.forEach(btn => {
     btn.addEventListener('click', function() {
-      dateButtons.forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.date-btn').forEach(b => b.classList.remove('active'));
       this.classList.add('active');
+      if (dropdown) dropdown.classList.remove('show');
     });
   });
+
+  // 自定义按钮点击
+  if (customBtn) {
+    customBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      if (dropdown) dropdown.classList.toggle('show');
+    });
+  }
+
+  // 取消按钮
+  if (cancelBtn) {
+    cancelBtn.addEventListener('click', function () {
+      if (dropdown) dropdown.classList.remove('show');
+    });
+  }
+
+  // 确定按钮
+  if (confirmBtn) {
+    confirmBtn.addEventListener('click', function () {
+      const start = dateStart?.value;
+      const end = dateEnd?.value;
+
+      if (start && end) {
+        document.querySelectorAll('.date-btn').forEach(b => b.classList.remove('active'));
+        if (customBtn) {
+          customBtn.classList.add('active', 'has-range');
+          customBtn.textContent = `${formatDisplayDate(start)} - ${formatDisplayDate(end)}`;
+        }
+      }
+
+      if (dropdown) dropdown.classList.remove('show');
+    });
+  }
+
+  // 点击外部关闭
+  document.addEventListener('click', function (e) {
+    if (dropdown && !dropdown.contains(e.target) && !customBtn?.contains(e.target)) {
+      dropdown.classList.remove('show');
+    }
+  });
+}
+
+function formatDate(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function formatDisplayDate(dateStr) {
+  const date = new Date(dateStr);
+  return `${date.getMonth() + 1}/${date.getDate()}`;
 }
 
 /**

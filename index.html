@@ -72,9 +72,29 @@
         
         <div class="header-actions">
           <div class="date-filter">
-            <button class="date-btn">昨日</button>
-            <button class="date-btn active">近7日</button>
-            <button class="date-btn">自定义</button>
+            <button class="date-btn" data-range="yesterday">昨日</button>
+            <button class="date-btn active" data-range="7days">近7日</button>
+            <div class="date-custom-wrapper">
+              <button class="date-btn date-custom-btn" data-range="custom">自定义</button>
+              <div class="date-picker-dropdown" id="date-picker-dropdown">
+                <div class="date-picker-header">选择日期范围</div>
+                <div class="date-picker-inputs">
+                  <div class="date-input-group">
+                    <label>开始日期</label>
+                    <input type="date" id="date-start" class="date-input">
+                  </div>
+                  <span class="date-separator">至</span>
+                  <div class="date-input-group">
+                    <label>结束日期</label>
+                    <input type="date" id="date-end" class="date-input">
+                  </div>
+                </div>
+                <div class="date-picker-actions">
+                  <button class="date-picker-cancel" id="date-picker-cancel">取消</button>
+                  <button class="date-picker-confirm" id="date-picker-confirm">确定</button>
+                </div>
+              </div>
+            </div>
           </div>
           <button class="btn-primary">
             <span>📥</span>
