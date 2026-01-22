@@ -5,6 +5,7 @@
 
 import { Chart, registerables } from 'chart.js';
 import { MockData } from './mock-data.js';
+import { initAuth } from './auth.js';
 import '../css/style.css';
 
 // 注册 Chart.js 组件
@@ -12,6 +13,7 @@ Chart.register(...registerables);
 
 // DOM 加载完成后初始化
 document.addEventListener('DOMContentLoaded', function() {
+  initAuth();
   initReceptionStats();
   initInquiryStats();
   initTrendChart();

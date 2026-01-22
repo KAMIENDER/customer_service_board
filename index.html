@@ -344,6 +344,58 @@
     </main>
   </div>
   
+  <!-- 认证模态框 -->
+  <div id="auth-modal" class="auth-modal">
+    <div class="auth-modal-content" style="position: relative;">
+      <div class="auth-modal-header">
+        <button class="auth-modal-close">✕</button>
+        <div class="auth-modal-logo">🤖</div>
+        <h2 class="auth-modal-title">欢迎使用 AI 客服中心</h2>
+        <p class="auth-modal-subtitle">登录以访问完整功能</p>
+      </div>
+      
+      <div class="auth-modal-body">
+        <!-- 登录表单 -->
+        <form id="login-form" class="auth-form">
+          <div class="form-group">
+            <label class="form-label">邮箱</label>
+            <input type="email" id="login-email" class="form-input" placeholder="请输入邮箱" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">密码</label>
+            <input type="password" id="login-password" class="form-input" placeholder="请输入密码" required>
+          </div>
+          <div id="auth-error" class="auth-error"></div>
+          <button type="submit" class="auth-submit-btn">登录</button>
+          <div class="auth-switch">
+            还没有账号？<a id="switch-to-register">立即注册</a>
+          </div>
+        </form>
+        
+        <!-- 注册表单 -->
+        <form id="register-form" class="auth-form" style="display: none;">
+          <div class="form-group">
+            <label class="form-label">邮箱</label>
+            <input type="email" id="register-email" class="form-input" placeholder="请输入邮箱" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">密码</label>
+            <input type="password" id="register-password" class="form-input" placeholder="请输入密码（至少6位）" required minlength="6">
+          </div>
+          <div class="form-group">
+            <label class="form-label">确认密码</label>
+            <input type="password" id="register-confirm-password" class="form-input" placeholder="请再次输入密码" required>
+          </div>
+          <div id="auth-error" class="auth-error"></div>
+          <button type="submit" class="auth-submit-btn">注册</button>
+          <div class="auth-switch">
+            已有账号？<a id="switch-to-login">立即登录</a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  
   <!-- Scripts -->
   <script type="module" src="/js/main.js"></script>
 </body>
