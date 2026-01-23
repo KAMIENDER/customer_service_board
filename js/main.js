@@ -6,6 +6,7 @@
 import { Chart, registerables } from 'chart.js';
 import { MockData } from './mock-data.js';
 import { initAuth } from './auth.js';
+import { getAllNum } from './api.js';
 import '../css/style.css';
 
 // 注册 Chart.js 组件
@@ -24,36 +25,145 @@ document.addEventListener('DOMContentLoaded', function() {
 /**
  * 初始化接待效率统计卡片数据（每日统计）
  */
-function initReceptionStats() {
-  const stats = MockData.receptionStats;
-  
-  // 动画计数器 - 每日统计指标
-  animateValue('stat-ai-reception', 0, stats.aiReceptionTotal.value, 1500);
-  animateValue('stat-no-response', 0, stats.noResponseCount.value, 1200);
-  animateValue('stat-handover', 0, stats.handoverToHuman.value, 1300);
-  animateValue('stat-no-answer-handover', 0, stats.noAnswerHandover.value, 1400);
-  
-  // 设置百分比值
-  setTimeout(() => {
-    document.getElementById('stat-handover-rate').textContent = stats.handoverRate.value;
-    document.getElementById('stat-no-answer-rate').textContent = stats.noAnswerHandoverRate.value;
-  }, 500);
+async function initReceptionStats() {
+  // 显示加载状态
+  showLoadingState();
+
+  // 从API获取真实数据
+  try {
+    const response = await getAllNum();
+    console.log('API 接待总数数据:', response);
+
+    // 检查API返回格式 { code: 0, message: "", data: {...} }
+    if (response && response.code === 0 && response.data) {
+      const data = response.data;
+
+      // AI接待人数 = all_num
+      if (data.all_num !== undefined) {
+        document.getElementById('stat-ai-reception').textContent = data.all_num.toLocaleString();
+      }
+
+      // 三句话无响应人数 = 3_question_num
+      if (data['3_question_num'] !== undefined) {
+        document.getElementById('stat-no-response').textContent = data['3_question_num'].toLocaleString();
+      }
+
+      // 转人工人数 = transfer_num
+      if (data.transfer_num !== undefined) {
+        document.getElementById('stat-handover').textContent = data.transfer_num.toLocaleString();
+      }
+
+      // AI转接率 = transfer_num / all_num * 100
+      if (data.transfer_num !== undefined && data.all_num) {
+        const handoverRate = ((data.transfer_num / data.all_num) * 100).toFixed(2);
+        document.getElementById('stat-handover-rate').textContent = handoverRate;
+      }
+
+      // 无问答转人工人数 = can_not_answer_and_transfer_num
+      if (data.can_not_answer_and_transfer_num !== undefined) {
+        document.getElementById('stat-no-answer-handover').textContent = data.can_not_answer_and_transfer_num.toLocaleString();
+      }
+
+      // 无问答转接率 = no_answer_and_trasfer_num (API直接返回)
+      if (data.no_answer_and_trasfer_num !== undefined) {
+        document.getElementById('stat-no-answer-rate').textContent = data.no_answer_and_trasfer_num;
+      }
+
+      // 更新询单相关数据
+      updateInquiryStats(data);
+    } else {
+      showErrorState('数据格式错误');
+    }
+  } catch (error) {
+    console.warn('获取API数据失败:', error.message);
+    showErrorState('加载失败');
+  }
+
+  // 移除加载状态
+  hideLoadingState();
 }
 
 /**
- * 初始化询单统计数据（三日内统计）
+ * 显示加载状态
+ */
+function showLoadingState() {
+  const statIds = [
+    'stat-ai-reception', 'stat-no-response', 'stat-handover',
+    'stat-handover-rate', 'stat-no-answer-handover', 'stat-no-answer-rate',
+    'stat-inquiry-count', 'stat-payment-count', 'stat-conversion'
+  ];
+
+  statIds.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.innerHTML = '<span class="loading-spinner"></span>';
+      el.classList.add('loading');
+    }
+  });
+}
+
+/**
+ * 隐藏加载状态
+ */
+function hideLoadingState() {
+  const statIds = [
+    'stat-ai-reception', 'stat-no-response', 'stat-handover',
+    'stat-handover-rate', 'stat-no-answer-handover', 'stat-no-answer-rate',
+    'stat-inquiry-count', 'stat-payment-count', 'stat-conversion'
+  ];
+  
+  statIds.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.classList.remove('loading');
+    }
+  });
+}
+
+/**
+ * 显示错误状态
+ */
+function showErrorState(msg) {
+  const statIds = [
+    'stat-ai-reception', 'stat-no-response', 'stat-handover',
+    'stat-handover-rate', 'stat-no-answer-handover', 'stat-no-answer-rate',
+    'stat-inquiry-count', 'stat-payment-count', 'stat-conversion'
+  ];
+
+  statIds.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.textContent = '--';
+    }
+  });
+}
+
+/**
+ * 根据API数据更新询单统计
+ */
+function updateInquiryStats(data) {
+  // AI询单人数 = no_trade_num
+  if (data.no_trade_num !== undefined) {
+    document.getElementById('stat-inquiry-count').textContent = data.no_trade_num.toLocaleString();
+  }
+
+  // 询单支付人数 = no_trade_and_success
+  if (data.no_trade_and_success !== undefined) {
+    document.getElementById('stat-payment-count').textContent = data.no_trade_and_success.toLocaleString();
+  }
+
+  // 询单支付转化率 = no_trade_and_success / no_trade_num * 100
+  if (data.no_trade_and_success !== undefined && data.no_trade_num) {
+    const conversionRate = ((data.no_trade_and_success / data.no_trade_num) * 100).toFixed(2);
+    document.getElementById('stat-conversion').textContent = conversionRate;
+  }
+}
+
+/**
+ * 初始化询单统计数据（API数据已由initReceptionStats处理）
  */
 function initInquiryStats() {
-  const stats = MockData.inquiryStats;
-
-  // 动画计数器 - 询单指标
-  animateValue('stat-inquiry-count', 0, stats.inquiryCount.value, 1500);
-  animateValue('stat-payment-count', 0, stats.paymentCount.value, 1400);
-
-  // 设置转化率
-  setTimeout(() => {
-    document.getElementById('stat-conversion').textContent = stats.conversionRate.value;
-  }, 500);
+// 询单数据由initReceptionStats中的updateInquiryStats统一处理
 }
 
 /**

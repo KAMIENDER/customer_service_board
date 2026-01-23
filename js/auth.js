@@ -91,27 +91,21 @@ function updateUserUI(user) {
   const userAvatar = document.querySelector('.user-avatar');
   const userName = document.querySelector('.user-name');
   const userRole = document.querySelector('.user-role');
-  const authBtn = document.getElementById('auth-btn');
+  const userInfo = document.querySelector('.user-info');
   
   if (user) {
     // 已登录状态
     const displayName = user.email?.split('@')[0] || '用户';
     if (userAvatar) userAvatar.textContent = displayName.charAt(0).toUpperCase();
     if (userName) userName.textContent = displayName;
-    if (userRole) userRole.textContent = '已登录';
-    if (authBtn) {
-      authBtn.textContent = '退出';
-      authBtn.onclick = handleLogout;
-    }
+    if (userRole) userRole.textContent = '点击退出';
+    if (userInfo) userInfo.classList.add('logged-in');
   } else {
     // 未登录状态
     if (userAvatar) userAvatar.textContent = '?';
-    if (userName) userName.textContent = '未登录';
+    if (userName) userName.textContent = '未登入';
     if (userRole) userRole.textContent = '点击登录';
-    if (authBtn) {
-      authBtn.textContent = '登录';
-      authBtn.onclick = showAuthModal;
-    }
+    if (userInfo) userInfo.classList.remove('logged-in');
   }
 }
 
@@ -119,12 +113,18 @@ function updateUserUI(user) {
  * 绑定认证相关事件
  */
 function bindAuthEvents() {
-  // 点击用户信息区域显示登录框
+  // 点击用户信息区域 - 未登录显示登录框，已登录则退出
   const userInfo = document.querySelector('.user-info');
   if (userInfo) {
     userInfo.style.cursor = 'pointer';
-    userInfo.addEventListener('click', () => {
-      if (!currentUser) {
+    userInfo.addEventListener('click', async () => {
+      if (currentUser) {
+        // 已登录 - 确认退出
+        if (confirm('确定要退出登录吗？')) {
+          await handleLogout();
+        }
+      } else {
+    // 未登录 - 显示登录框
         showAuthModal();
       }
     });
