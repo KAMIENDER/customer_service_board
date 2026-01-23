@@ -1132,40 +1132,43 @@ button {
 
 .bottom-bar {
   background: linear-gradient(90deg, #FEF3C7 0%, #FDE68A 100%);
-  border-radius: var(--radius-lg);
-  padding: var(--spacing-md) var(--spacing-xl);
+  border-radius: var(--radius-xl);
+    padding: 24px 32px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   margin-top: var(--spacing-xl);
+  box-shadow: 0 4px 6px -1px rgba(245, 158, 11, 0.1), 0 2px 4px -1px rgba(245, 158, 11, 0.06);
 }
 
 .bottom-bar-content {
   display: flex;
   align-items: center;
-  gap: var(--spacing-md);
+  gap: 20px;
 }
 
 .bottom-bar-icon {
-  width: 32px;
-  height: 32px;
-  background: rgba(245, 158, 11, 0.2);
+  width: 48px;
+    height: 48px;
+    background: rgba(255, 255, 255, 0.5);
   border-radius: var(--radius-full);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--warning-color);
+  color: #D97706;
+    font-size: 24px;
 }
 
 .bottom-bar-text {
-  font-size: var(--font-size-sm);
-  font-weight: 500;
-  color: var(--text-primary);
+  font-size: 20px;
+    font-weight: 600;
+    color: #92400E;
+    margin-bottom: 4px;
 }
 
 .bottom-bar-sub {
-  font-size: var(--font-size-xs);
-  color: var(--text-secondary);
+  font-size: 14px;
+    color: #B45309;
 }
 
 .staff-avatars {
@@ -1521,4 +1524,18 @@ button {
   flex: 1;
   height: 1px;
   background: var(--border-color);
+}
+/* 节省人力成本数字框 */
+.saved-count-box {
+  background: rgba(255, 255, 255, 0.9);
+  padding: 4px 16px;
+  border-radius: var(--radius-lg);
+  font-size: 32px;
+  font-weight: 700;
+  color: #D97706;
+  margin-right: 12px;
+  min-width: 40px;
+  text-align: center;
+  line-height: 1.2;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }

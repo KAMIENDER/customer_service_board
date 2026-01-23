@@ -12,26 +12,39 @@ import '../css/style.css';
 // 注册 Chart.js 组件
 Chart.register(...registerables);
 
+// 当前筛选参数
+let currentFilterParams = {
+  interval: 7
+};
+
 // DOM 加载完成后初始化
 document.addEventListener('DOMContentLoaded', function() {
   initAuth();
   initReceptionStats();
   initInquiryStats();
-  initTrendChart();
   initDateFilter();
   initFilterTabs();
 });
 
 /**
- * 初始化接待效率统计卡片数据（每日统计）
+ * 刷新数据（使用当前筛选参数）
  */
-async function initReceptionStats() {
+async function refreshData() {
+  await initReceptionStats(currentFilterParams);
+}
+
+/**
+ * 初始化接待效率统计卡片数据（每日统计）
+ * @param {Object} params - API 查询参数
+ */
+async function initReceptionStats(params = currentFilterParams) {
   // 显示加载状态
   showLoadingState();
 
   // 从API获取真实数据
   try {
-    const response = await getAllNum();
+    console.log('API 请求参数:', params);
+    const response = await getAllNum(params);
     console.log('API 接待总数数据:', response);
 
     // 检查API返回格式 { code: 0, message: "", data: {...} }
@@ -59,18 +72,26 @@ async function initReceptionStats() {
         document.getElementById('stat-handover-rate').textContent = handoverRate;
       }
 
-      // 无问答转人工人数 = can_not_answer_and_transfer_num
+      // 无法回答转人工人数 = can_not_answer_and_transfer_num
       if (data.can_not_answer_and_transfer_num !== undefined) {
         document.getElementById('stat-no-answer-handover').textContent = data.can_not_answer_and_transfer_num.toLocaleString();
       }
 
-      // 无问答转接率 = no_answer_and_trasfer_num (API直接返回)
-      if (data.no_answer_and_trasfer_num !== undefined) {
-        document.getElementById('stat-no-answer-rate').textContent = data.no_answer_and_trasfer_num;
+      // 无法回答转接率 = can_not_answer_and_transfer_num / all_num * 100
+      if (data.can_not_answer_and_transfer_num !== undefined && data.all_num) {
+        const noAnswerRate = ((data.can_not_answer_and_transfer_num / data.all_num) * 100).toFixed(2);
+        document.getElementById('stat-no-answer-rate').textContent = noAnswerRate;
       }
 
       // 更新询单相关数据
       updateInquiryStats(data);
+
+      // 计算本周预估节省人力成本
+      // 逻辑：接待人数(all_num) / 200 / 1.2
+      if (data.all_num !== undefined) {
+        const savedHumanCount = Math.ceil(data.all_num / 200 / 1.2);
+        updateSavedHumanCount(savedHumanCount);
+      }
     } else {
       showErrorState('数据格式错误');
     }
@@ -195,111 +216,12 @@ function animateValue(elementId, start, end, duration) {
 }
 
 /**
- * 初始化接待趋势图表
+ * 初始化接待趋势图表 (已移除)
  */
 function initTrendChart() {
-  const ctx = document.getElementById('trendChart');
-  if (!ctx) return;
-  
-  const data = MockData.trendData;
-  
-  new Chart(ctx, {
-    type: 'line',
-    data: {
-      labels: data.labels,
-      datasets: [
-        {
-          label: 'AI接待',
-          data: data.aiReception,
-          borderColor: '#3B82F6',
-          backgroundColor: 'rgba(59, 130, 246, 0.1)',
-          borderWidth: 3,
-          fill: true,
-          tension: 0.4,
-          pointRadius: 4,
-          pointBackgroundColor: '#3B82F6',
-          pointBorderColor: '#fff',
-          pointBorderWidth: 2,
-          pointHoverRadius: 6
-        },
-        {
-          label: '转人工',
-          data: data.humanHandover,
-          borderColor: '#8B5CF6',
-          backgroundColor: 'rgba(139, 92, 246, 0.1)',
-          borderWidth: 3,
-          fill: true,
-          tension: 0.4,
-          pointRadius: 4,
-          pointBackgroundColor: '#8B5CF6',
-          pointBorderColor: '#fff',
-          pointBorderWidth: 2,
-          pointHoverRadius: 6
-        }
-      ]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      interaction: {
-        intersect: false,
-        mode: 'index'
-      },
-      plugins: {
-        legend: {
-          display: false
-        },
-        tooltip: {
-          backgroundColor: 'rgba(255, 255, 255, 0.95)',
-          titleColor: '#1F2937',
-          bodyColor: '#6B7280',
-          borderColor: '#E5E7EB',
-          borderWidth: 1,
-          cornerRadius: 12,
-          padding: 12,
-          boxPadding: 6,
-          usePointStyle: true,
-          callbacks: {
-            label: function(context) {
-              return context.dataset.label + ': ' + context.parsed.y.toLocaleString() + ' 人';
-            }
-          }
-        }
-      },
-      scales: {
-        x: {
-          grid: {
-            display: false
-          },
-          ticks: {
-            color: '#9CA3AF',
-            font: {
-              size: 12
-            }
-          }
-        },
-        y: {
-          beginAtZero: true,
-          grid: {
-            color: 'rgba(0, 0, 0, 0.05)'
-          },
-          ticks: {
-            color: '#9CA3AF',
-            font: {
-              size: 12
-            },
-            callback: function(value) {
-              if (value >= 1000) {
-                return (value / 1000).toFixed(1) + 'k';
-              }
-              return value;
-            }
-          }
-        }
-      }
-    }
-  });
+  // 图表已移除
 }
+
 
 /**
  * 初始化日期筛选器
@@ -323,11 +245,41 @@ function initDateFilter() {
 
   // 普通日期按钮点击
   dateButtons.forEach(btn => {
-    btn.addEventListener('click', function() {
+    btn.addEventListener('click', async function () {
       document.querySelectorAll('.date-btn').forEach(b => b.classList.remove('active'));
       this.classList.add('active');
       if (dropdown) dropdown.classList.remove('show');
-      console.log('日期筛选:', this.dataset.range);
+
+      // 重置自定义按钮文本
+      if (customBtn) {
+        customBtn.textContent = '自定义';
+        customBtn.classList.remove('has-range');
+      }
+
+      // 设置 interval 参数并刷新数据
+      const range = this.dataset.range;
+
+      if (range === 'yesterday') {
+        const today = new Date();
+        const yesterday = new Date(today);
+        yesterday.setDate(today.getDate() - 1);
+        const yStr = formatDate(yesterday);
+
+        currentFilterParams = {
+          start_time: `${yStr} 00:00:00`,
+          end_time: `${yStr} 23:59:59`
+        };
+      } else if (range.endsWith('days')) {
+        // 解析 '7days' -> 7
+        const days = parseInt(range);
+        currentFilterParams = { interval: days };
+      } else {
+        // 其他情况作为 interval 处理（如纯数字）
+        currentFilterParams = { interval: range };
+      }
+
+      console.log('日期筛选参数:', currentFilterParams);
+      await refreshData();
     });
   });
 
@@ -350,7 +302,7 @@ function initDateFilter() {
 
   // 确定按钮
   if (confirmBtn) {
-    confirmBtn.addEventListener('click', function () {
+    confirmBtn.addEventListener('click', async function () {
       const start = dateStart?.value;
       const end = dateEnd?.value;
 
@@ -360,7 +312,15 @@ function initDateFilter() {
           customBtn.classList.add('active', 'has-range');
           customBtn.textContent = `${formatDisplayDate(start)} - ${formatDisplayDate(end)}`;
         }
-        console.log('自定义日期范围:', start, '-', end);
+
+        // 设置 start_time 和 end_time 参数并刷新数据
+        // 格式：YYYY-MM-DD 00:00:00 到 YYYY-MM-DD 23:59:59
+        currentFilterParams = {
+          start_time: `${start} 00:00:00`,
+          end_time: `${end} 23:59:59`
+        };
+        console.log('自定义日期范围:', currentFilterParams);
+        await refreshData();
       }
 
       if (dropdown) dropdown.classList.remove('show');
@@ -408,4 +368,20 @@ function initFilterTabs() {
       console.log('筛选:', this.textContent);
     });
   });
+}
+
+/**
+ * 更新节省人力成本展示
+ * @param {number} count - 节省的人力数量
+ */
+/**
+ * 更新节省人力成本展示
+ * @param {number} count - 节省的人力数量
+ */
+function updateSavedHumanCount(count) {
+  const container = document.getElementById('human-saved-count');
+  if (!container) return;
+
+  // 直接显示数字，不拆分
+  container.textContent = count;
 }

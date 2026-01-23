@@ -56,10 +56,15 @@ async function request(endpoint, options = {}) {
 
 /**
  * 获取接待总数统计
+ * @param {Object} params - 查询参数
+ * @param {string} params.interval - 时间间隔：'today', '7days', '30days' 等
+ * @param {string} params.start_time - 开始时间，格式：YYYY-MM-DD HH:mm:ss
+ * @param {string} params.end_time - 结束时间，格式：YYYY-MM-DD HH:mm:ss
  */
-export async function getAllNum() {
+export async function getAllNum(params = {}) {
   return request('/rate/all_num', {
-    method: 'POST'
+    method: 'POST',
+    body: JSON.stringify(params)
   });
 }
 

@@ -39,20 +39,20 @@ export const MockData = {
       suffix: '%',
       definition: 'AI接待转人工人数/AI接待人数'
     },
-    // AI接待无问答转人工人数 - AI无法回答的用户并转接人工的人数
+    // AI接待无法回答转人工人数 - AI无法回答的用户并转接人工的人数
     noAnswerHandover: {
       value: 856,
       change: -8.2,
       trend: 'down',
       definition: 'AI无法回答的用户并转接人工的人数'
     },
-    // AI接待无问答转接率 - AI接待无问答转人工人数/AI接待人数
+    // AI接待无法回答转接率 - AI接待无法回答转人工人数/AI接待人数
     noAnswerHandoverRate: {
       value: 1.72,
       change: -6.5,
       trend: 'down',
       suffix: '%',
-      definition: 'AI接待无问答转人工人数/AI接待人数'
+      definition: 'AI接待无法回答转人工人数/AI接待人数'
     }
   },
 

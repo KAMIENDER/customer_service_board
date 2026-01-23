@@ -112,6 +112,22 @@
           <p class="page-subtitle">监控AI客服的接待指标，分析转人工和转化数据，持续优化服务效率</p>
         </div>
         
+        <!-- 节省人力成本条 -->
+        <div class="bottom-bar" style="margin-top: 0; margin-bottom: 24px;">
+          <div class="bottom-bar-content">
+            <div class="bottom-bar-icon">💡</div>
+            <div>
+              <div class="bottom-bar-text">本周预估节省人力成本</div>
+              <div class="bottom-bar-sub">基于AI自动解决率计算</div>
+            </div>
+          </div>
+          <div class="staff-avatars">
+            <!-- 动态生成数字 -->
+            <div id="human-saved-count" class="saved-count-box">0</div>
+            <span class="staff-label">人天</span>
+          </div>
+        </div>
+        
         <!-- 核心统计卡片 - 每日统计 -->
         <div class="stats-grid" style="grid-template-columns: repeat(3, 1fr);">
           <div class="stat-card blue">
@@ -155,7 +171,7 @@
               <div class="stat-icon red">❓</div>
               <span class="stat-change down">-8.2%</span>
             </div>
-            <div class="stat-label">无问答转人工人数</div>
+            <div class="stat-label">无法回答转人工人数</div>
             <div class="stat-value" id="stat-no-answer-handover">0</div>
           </div>
           
@@ -164,7 +180,7 @@
               <div class="stat-icon" style="background: rgba(236, 72, 153, 0.2); color: #EC4899;">📉</div>
               <span class="stat-change down">-6.5%</span>
             </div>
-            <div class="stat-label">无问答转接率</div>
+            <div class="stat-label">无法回答转接率</div>
             <div class="stat-value small"><span id="stat-no-answer-rate">0</span><span class="stat-suffix">%</span></div>
           </div>
         </div>
@@ -204,162 +220,11 @@
           </div>
         </div>
         
-        <!-- 接待趋势分析 -->
-        <div class="chart-container">
-          <div class="chart-header">
-            <h3 class="chart-title">接待趋势分析</h3>
-            <div class="chart-legend">
-              <div class="legend-item">
-                <span class="legend-dot blue"></span>
-                <span>AI接待</span>
-              </div>
-              <div class="legend-item">
-                <span class="legend-dot purple"></span>
-                <span>转人工</span>
-              </div>
-            </div>
-          </div>
-          <div class="chart-body">
-            <canvas id="trendChart"></canvas>
-          </div>
-        </div>
+
         
-        <!-- 覆盖率与分类优化 -->
-        <div class="coverage-section">
-          <!-- 左侧：问题覆盖统计 -->
-          <div class="coverage-card">
-            <div class="coverage-header">
-              <h3 class="coverage-title">问题覆盖统计</h3>
-            </div>
-            <div class="coverage-stats">
-              <div class="coverage-stat">
-                <div class="coverage-stat-value"><span id="total-questions">0</span> <span style="font-size: 14px; color: #6B7280;">咨询问题</span></div>
-              </div>
-              <div class="coverage-stat">
-                <div class="coverage-stat-value"><span id="answered-questions">0</span> <span style="font-size: 14px; color: #6B7280;">已回复</span></div>
-              </div>
-            </div>
-            <div class="coverage-progress">
-              <div class="progress-bar">
-                <div class="progress-fill" style="width: 91%"></div>
-              </div>
-              <div class="progress-label">
-                <span class="progress-text">↑ 较上周 12.5%</span>
-                <span class="progress-value">91%</span>
-              </div>
-            </div>
-          </div>
-          
-          <!-- 右侧：覆盖率环形图 -->
-          <div class="coverage-card">
-            <div class="coverage-header">
-              <h3 class="coverage-title">问题覆盖率</h3>
-            </div>
-            <div class="circular-progress-container">
-              <div class="circular-progress">
-                <svg width="160" height="160" viewBox="0 0 160 160">
-                  <defs>
-                    <linearGradient id="progressGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-                      <stop offset="0%" style="stop-color:#10B981"/>
-                      <stop offset="100%" style="stop-color:#3B82F6"/>
-                    </linearGradient>
-                  </defs>
-                  <circle class="bg" cx="80" cy="80" r="70"/>
-                  <circle class="progress" cx="80" cy="80" r="70" 
-                    stroke-dasharray="439.82" 
-                    stroke-dashoffset="439.82"/>
-                </svg>
-                <div class="circular-value">
-                  <div class="circular-value-number"><span id="coverage-rate">0</span>%</div>
-                  <div class="circular-value-label">覆盖完成</div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+
         
-        <!-- 分类优化表格 -->
-        <div class="table-container">
-          <div class="table-header">
-            <div>
-              <h3 class="table-title">分类优化</h3>
-            </div>
-            <div class="table-actions">
-              <div class="filter-tabs">
-                <button class="filter-tab active">全部分类</button>
-                <button class="filter-tab">低覆盖</button>
-                <button class="filter-tab">待处理</button>
-              </div>
-            </div>
-          </div>
-          
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>场景/分类名称</th>
-                <th>咨询量</th>
-                <th>覆盖率</th>
-                <th>识别问题</th>
-                <th>操作</th>
-              </tr>
-            </thead>
-            <tbody id="category-table-body">
-              <!-- 动态生成 -->
-            </tbody>
-          </table>
-          
-          <div class="pagination">
-            <span class="pagination-info">显示 1 至 5 共 130 条</span>
-            <button class="page-btn" disabled>‹</button>
-            <button class="page-btn active">1</button>
-            <button class="page-btn">2</button>
-            <button class="page-btn">3</button>
-            <button class="page-btn">›</button>
-          </div>
-        </div>
-        
-        <!-- 待优化问题 -->
-        <div class="table-container" style="margin-top: 24px;">
-          <div class="table-header">
-            <div>
-              <h3 class="table-title">待优化问题</h3>
-              <p class="table-subtitle">AI置信度较低或无法回答的问题汇总</p>
-            </div>
-            <a href="#" class="link-text">查看全部</a>
-          </div>
-          
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>咨询主题</th>
-                <th>检测问题</th>
-                <th>出现频次</th>
-                <th>操作</th>
-              </tr>
-            </thead>
-            <tbody id="pending-issues-body">
-              <!-- 动态生成 -->
-            </tbody>
-          </table>
-        </div>
-        
-        <!-- 底部信息条 -->
-        <div class="bottom-bar">
-          <div class="bottom-bar-content">
-            <div class="bottom-bar-icon">💡</div>
-            <div>
-              <div class="bottom-bar-text">本周预估节省人力成本</div>
-              <div class="bottom-bar-sub">基于AI自动解决率计算</div>
-            </div>
-          </div>
-          <div class="staff-avatars">
-            <div class="staff-avatar red">1</div>
-            <div class="staff-avatar yellow">0</div>
-            <div class="staff-avatar blue">2</div>
-            <div class="staff-avatar gray">6</div>
-            <span class="staff-label">客服人力</span>
-          </div>
-        </div>
+
       </div>
     </main>
   </div>
