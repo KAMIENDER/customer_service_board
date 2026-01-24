@@ -69,8 +69,37 @@ export async function getAllNum(params = {}) {
 }
 
 /**
+ * 获取问题列表
+ * @param {Object} params - 查询参数
+ * @param {number} params.interval - 时间间隔（天数）
+ * @param {string} params.start_time - 开始时间
+ * @param {string} params.end_time - 结束时间
+ * @param {number} params.offset - 分页偏移量（从0开始）
+ * @param {number} params.limit - 每页数量
+ */
+export async function getQuestions(params = {}) {
+  return request('/rate/questions', {
+    method: 'POST',
+    body: JSON.stringify(params)
+  });
+}
+
+/**
+ * 获取对话详情
+ * @param {string} conversationId - 会话ID
+ */
+export async function getConversationDetail(conversationId) {
+  return request('/detail', {
+    method: 'POST',
+    body: JSON.stringify({ conversation_id: conversationId })
+  });
+}
+
+/**
  * 导出 API 服务
  */
 export const apiService = {
-  getAllNum
+  getAllNum,
+  getQuestions,
+  getConversationDetail
 };

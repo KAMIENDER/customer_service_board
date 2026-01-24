@@ -6,6 +6,7 @@
 import { Chart, registerables } from 'chart.js';
 import { MockData } from './mock-data.js';
 import { initAuth } from './auth.js';
+import { getQuestions, getConversationDetail } from './api.js';
 import '../css/style.css';
 
 // 注册 Chart.js 组件
@@ -19,6 +20,8 @@ document.addEventListener('DOMContentLoaded', function() {
   initCircularProgress();
   initSceneTable();
   initScriptTable();
+  initQuestionsTable();
+  initChatModal();
   initDateFilter();
   initFilterTabs();
 });
@@ -353,4 +356,298 @@ function initFilterTabs() {
       this.classList.add('active');
     });
   });
+}
+
+// 分页状态
+let questionsPageState = {
+  currentPage: 1,
+  pageSize: 20,
+  totalCount: 0
+};
+
+/**
+ * 初始化知识库无法回答问题列表
+ */
+async function initQuestionsTable() {
+  await loadQuestionsPage(1);
+}
+
+/**
+ * 加载指定页的问题列表
+ */
+async function loadQuestionsPage(page) {
+  const tbody = document.getElementById('questions-table-body');
+  const pagination = document.getElementById('questions-pagination');
+  if (!tbody) return;
+
+  // 更新当前页
+  questionsPageState.currentPage = page;
+  const offset = (page - 1) * questionsPageState.pageSize;
+
+  // 显示加载状态
+  tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #9CA3AF;">加载中...</td></tr>';
+
+  try {
+    const response = await getQuestions({
+      interval: 7,
+      offset: offset,
+      limit: questionsPageState.pageSize
+    });
+
+    if (response && response.code === 0 && response.data && response.data.questions) {
+      const questions = response.data.questions;
+      const totalCount = response.data.all_num || questions.length;
+      questionsPageState.totalCount = totalCount;
+
+      // 清空表格
+      tbody.innerHTML = '';
+
+      if (questions.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #9CA3AF;">暂无数据</td></tr>';
+        renderQuestionsPagination(pagination, 0, 1);
+        return;
+      }
+
+      // 渲染表格行
+      questions.forEach(item => {
+        const row = document.createElement('tr');
+        const createdAt = item.created_at || '-';
+
+        row.innerHTML = `
+          <td>
+            <div class="table-cell-main">${item.buyer_nick || '-'}</div>
+          </td>
+          <td>
+            <div class="table-cell-sub">${item.seller_nick || '-'}</div>
+          </td>
+          <td>
+            <span class="tag warning">${item.reason || '未知原因'}</span>
+          </td>
+          <td>
+            <div class="table-cell-sub">${createdAt}</div>
+          </td>
+          <td>
+            <a href="#" class="link-text" data-conversation-id="${item.conversation_id}">查看对话</a>
+          </td>
+        `;
+
+        tbody.appendChild(row);
+      });
+
+      // 渲染分页
+      const totalPages = Math.ceil(totalCount / questionsPageState.pageSize);
+      renderQuestionsPagination(pagination, totalCount, totalPages);
+
+    } else {
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #EF4444;">加载失败</td></tr>';
+      if (pagination) {
+        pagination.innerHTML = '<span class="pagination-info">加载失败</span>';
+      }
+    }
+  } catch (error) {
+    console.error('获取问题列表失败:', error);
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #EF4444;">加载失败: ' + error.message + '</td></tr>';
+    if (pagination) {
+      pagination.innerHTML = '<span class="pagination-info">加载失败</span>';
+    }
+  }
+}
+
+/**
+ * 渲染分页控件
+ */
+function renderQuestionsPagination(container, totalCount, totalPages) {
+  if (!container) return;
+
+  const currentPage = questionsPageState.currentPage;
+  const startItem = (currentPage - 1) * questionsPageState.pageSize + 1;
+  const endItem = Math.min(currentPage * questionsPageState.pageSize, totalCount);
+
+  let html = `<span class="pagination-info">显示 ${startItem} 至 ${endItem} 共 ${totalCount} 条</span>`;
+
+  // 上一页按钮
+  html += `<button class="page-btn" ${currentPage <= 1 ? 'disabled' : ''} data-page="${currentPage - 1}">‹</button>`;
+
+  // 页码按钮（最多显示5个）
+  let startPage = Math.max(1, currentPage - 2);
+  let endPage = Math.min(totalPages, startPage + 4);
+  if (endPage - startPage < 4) {
+    startPage = Math.max(1, endPage - 4);
+  }
+
+  for (let i = startPage; i <= endPage; i++) {
+    html += `<button class="page-btn ${i === currentPage ? 'active' : ''}" data-page="${i}">${i}</button>`;
+  }
+
+  // 下一页按钮
+  html += `<button class="page-btn" ${currentPage >= totalPages ? 'disabled' : ''} data-page="${currentPage + 1}">›</button>`;
+
+  container.innerHTML = html;
+
+  // 绑定点击事件
+  container.querySelectorAll('.page-btn:not([disabled])').forEach(btn => {
+    btn.addEventListener('click', function () {
+      const page = parseInt(this.dataset.page);
+      if (page && page !== currentPage) {
+        loadQuestionsPage(page);
+      }
+    });
+  });
+}
+
+/**
+ * 初始化对话详情模态框
+ */
+function initChatModal() {
+  const modal = document.getElementById('chat-modal');
+  const closeBtn = document.getElementById('chat-modal-close');
+  const tableBody = document.getElementById('questions-table-body');
+
+  if (!modal) return;
+
+  // 关闭按钮
+  if (closeBtn) {
+    closeBtn.addEventListener('click', () => {
+      modal.classList.remove('show');
+    });
+  }
+
+  // 点击外部关闭
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) {
+      modal.classList.remove('show');
+    }
+  });
+
+  // 表格点击委托 - 查看对话
+  if (tableBody) {
+    tableBody.addEventListener('click', async (e) => {
+      // 查找最近的带 data-conversation-id 的元素
+      const target = e.target.closest('[data-conversation-id]');
+      if (target) {
+        e.preventDefault();
+        const conversationId = target.dataset.conversationId;
+
+        // 显示模态框
+        modal.classList.add('show');
+
+        // 加载详情
+        await loadConversationDetail(conversationId);
+      }
+    });
+  }
+}
+
+/**
+ * 加载对话详情
+ */
+async function loadConversationDetail(conversationId) {
+  const contentDiv = document.getElementById('chat-content');
+  const infoDiv = document.getElementById('chat-info');
+
+  if (!contentDiv) return;
+
+  // 显示加载中
+  contentDiv.innerHTML = '<div style="text-align: center; color: #9CA3AF; margin-top: 40px;">加载中...</div>';
+  if (infoDiv) infoDiv.textContent = `会话 ID: ${conversationId}`;
+
+  try {
+    console.log('正在请求会话详情:', conversationId);
+    const response = await getConversationDetail(conversationId);
+    console.log('API响应结果:', response);
+
+    if (response && response.code === 0 && response.data) {
+      let messages = [];
+      // 优先适配 contents 字段 (新API格式)
+      if (response.data.contents && Array.isArray(response.data.contents)) {
+        messages = response.data.contents;
+      } else if (Array.isArray(response.data)) {
+        messages = response.data;
+      } else if (response.data.messages && Array.isArray(response.data.messages)) {
+        messages = response.data.messages;
+      }
+
+      console.log('解析出的消息列表:', messages);
+      renderChatMessages(messages, contentDiv);
+    } else {
+      console.error('API返回错误或数据为空:', response);
+      contentDiv.innerHTML = `<div style="text-align: center; color: #EF4444; margin-top: 40px;">加载失败: ${response?.message || '数据格式错误'}</div>`;
+    }
+  } catch (error) {
+    console.error('加载对话详情失败:', error);
+    contentDiv.innerHTML = `<div style="text-align: center; color: #EF4444; margin-top: 40px;">请求失败: ${error.message}</div>`;
+  }
+}
+
+/**
+ * 渲染聊天记录
+ */
+function renderChatMessages(messages, container) {
+  try {
+    container.innerHTML = '';
+
+    if (!messages || messages.length === 0) {
+      container.innerHTML = '<div style="text-align: center; color: #9CA3AF; margin-top: 40px;">暂无对话记录(列表为空)</div>';
+      return;
+    }
+
+    messages.forEach(msg => {
+      // 字段适配
+      const content = msg.msg || msg.content || msg.message || '';
+      const time = msg.gmtCreated || msg.created_at || msg.time || '';
+      const from = msg.userNickFrom || msg.sender || msg.role || '';
+      const type = msg.type || 'text';
+
+      // 角色判断 (转字符串防止报错)
+      let role = 'buyer';
+      const fromLower = String(from).toLowerCase();
+
+      // 如果发送者包含店铺关键词，或者是 AI/Assistant/Seller
+      if (
+        fromLower.includes('旗舰店') ||
+        fromLower.includes('专卖店') ||
+        fromLower.includes('客服') ||
+        fromLower.includes('colorlomo') ||
+        fromLower === 'ai' ||
+        fromLower === 'seller' ||
+        fromLower === 'assistant'
+      ) {
+        role = 'seller';
+        if (fromLower === 'ai') role = 'ai';
+      }
+
+      const avatar = role === 'buyer' ? '👤' : (role === 'ai' ? '🤖' : '👨‍💼');
+
+      // 处理特殊消息类型
+      let displayContent = content;
+      if (type === 'item_goods' || type === 'sys_goods') {
+        // 商品卡片样式优化
+        let productInfo = String(content).replace(/^发送下述商品链接:\s*/, '');
+        displayContent = `<div style="font-size: 13px; color: #4B5563; border-left: 3px solid #E5E7EB; padding-left: 8px;">
+            <span style="color: #6B7280; font-weight: 500;">[商品链接]</span><br/>${productInfo}
+          </div>`;
+      }
+
+      const div = document.createElement('div');
+      div.className = `chat-message ${role}`;
+
+      div.innerHTML = `
+         <div class="chat-avatar" title="${from}">${avatar}</div>
+         <div>
+           <div class="chat-bubble">${displayContent || '[无内容]'}</div>
+           ${time ? `<div class="chat-time">${time}</div>` : ''}
+         </div>
+       `;
+      container.appendChild(div);
+    });
+
+    // 滚动到底部
+    setTimeout(() => {
+      container.scrollTop = container.scrollHeight;
+    }, 100);
+
+  } catch (renderError) {
+    console.error('渲染聊天记录时出错:', renderError);
+    container.innerHTML = `<div style="text-align: center; color: #EF4444; margin-top: 40px;">渲染错误: ${renderError.message}</div>`;
+  }
 }

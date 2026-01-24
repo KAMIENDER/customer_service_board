@@ -92,6 +92,9 @@ async function initReceptionStats(params = currentFilterParams) {
         const savedHumanCount = Math.ceil(data.all_num / 200 / 1.2);
         updateSavedHumanCount(savedHumanCount);
       }
+
+      // 更新问题覆盖统计
+      updateQuestionCoverageStats(data);
     } else {
       showErrorState('数据格式错误');
     }
@@ -384,4 +387,28 @@ function updateSavedHumanCount(count) {
 
   // 直接显示数字，不拆分
   container.textContent = count;
+}
+
+/**
+ * 更新问题覆盖统计
+ * @param {Object} data 
+ */
+function updateQuestionCoverageStats(data) {
+  // 1. 咨询问题数 (优先使用 all_question_num，其次 question_num)
+  const allQuestions = data.all_question_num !== undefined ? data.all_question_num : data.question_num;
+  if (allQuestions !== undefined) {
+    document.getElementById('stat-all-questions').textContent = allQuestions.toLocaleString();
+  }
+
+  // 2. 已回复问题数
+  const answeredQuestions = data.answer_question_num;
+  if (answeredQuestions !== undefined) {
+    document.getElementById('stat-answered-questions').textContent = answeredQuestions.toLocaleString();
+  }
+
+  // 3. 问题覆盖率
+  if (allQuestions && answeredQuestions !== undefined) {
+    const coverage = ((answeredQuestions / allQuestions) * 100).toFixed(2);
+    document.getElementById('stat-question-coverage').textContent = coverage;
+  }
 }

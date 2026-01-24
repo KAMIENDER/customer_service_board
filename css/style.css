@@ -1539,3 +1539,84 @@ button {
   line-height: 1.2;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
+/* 聊天气泡样式 */
+.chat-message {
+  display: flex;
+  margin-bottom: 16px;
+  align-items: flex-start;
+}
+
+.chat-message.buyer {
+  flex-direction: row;
+}
+
+.chat-message.seller,
+.chat-message.ai {
+  flex-direction: row-reverse;
+}
+
+.chat-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #E5E7EB;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  flex-shrink: 0;
+}
+
+.chat-message.buyer .chat-avatar {
+  background: #DBEAFE;
+  color: #1D4ED8;
+  margin-right: 12px;
+}
+
+.chat-message.seller .chat-avatar,
+.chat-message.ai .chat-avatar {
+  background: #FEF3C7;
+  color: #D97706;
+  margin-left: 12px;
+}
+
+.chat-bubble {
+  max-width: 70%;
+  padding: 12px 16px;
+  border-radius: 12px;
+  font-size: 14px;
+  line-height: 1.5;
+  position: relative;
+}
+
+.chat-message.buyer .chat-bubble {
+  background: #FFF;
+  border: 1px solid #E5E7EB;
+  border-top-left-radius: 4px;
+  color: #1F2937;
+}
+
+.chat-message.seller .chat-bubble,
+.chat-message.ai .chat-bubble {
+  background: #FFFBEB;
+  border: 1px solid #FCD34D;
+  border-top-right-radius: 4px;
+  color: #92400E;
+}
+
+.chat-time {
+  font-size: 12px;
+  color: #9CA3AF;
+  margin-top: 4px;
+  margin-left: 4px;
+}
+
+.chat-message.seller .chat-time,
+.chat-message.ai .chat-time {
+  text-align: right;
+  margin-right: 4px;
+}
+
+.auth-modal.show {
+  display: flex !important;
+}
