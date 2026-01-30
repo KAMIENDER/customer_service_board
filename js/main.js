@@ -6,7 +6,7 @@
 import { Chart, registerables } from 'chart.js';
 import { MockData } from './mock-data.js';
 import { initAuth } from './auth.js';
-import { getAllNum } from './api.js';
+import { getAllNumCached, loadFilterParams, saveFilterParams, getTokenCost } from './api.js';
 import '../css/style.css';
 
 // 注册 Chart.js 组件
@@ -17,6 +17,11 @@ let currentFilterParams = {
   interval: 7
 };
 
+const savedFilterParams = loadFilterParams();
+if (savedFilterParams) {
+  currentFilterParams = savedFilterParams;
+}
+
 // DOM 加载完成后初始化
 document.addEventListener('DOMContentLoaded', function() {
   initAuth();
@@ -24,6 +29,7 @@ document.addEventListener('DOMContentLoaded', function() {
   initInquiryStats();
   initDateFilter();
   initFilterTabs();
+  initTokenCostChart();
 });
 
 /**
@@ -44,7 +50,7 @@ async function initReceptionStats(params = currentFilterParams) {
   // 从API获取真实数据
   try {
     console.log('API 请求参数:', params);
-    const response = await getAllNum(params);
+    const response = await getAllNumCached(params);
     console.log('API 接待总数数据:', response);
 
     // 检查API返回格式 { code: 0, message: "", data: {...} }
@@ -281,6 +287,7 @@ function initDateFilter() {
         currentFilterParams = { interval: range };
       }
 
+      saveFilterParams(currentFilterParams);
       console.log('日期筛选参数:', currentFilterParams);
       await refreshData();
     });
@@ -322,6 +329,7 @@ function initDateFilter() {
           start_time: `${start} 00:00:00`,
           end_time: `${end} 23:59:59`
         };
+        saveFilterParams(currentFilterParams);
         console.log('自定义日期范围:', currentFilterParams);
         await refreshData();
       }
@@ -410,5 +418,126 @@ function updateQuestionCoverageStats(data) {
   if (allQuestions && answeredQuestions !== undefined) {
     const coverage = ((answeredQuestions / allQuestions) * 100).toFixed(2);
     document.getElementById('stat-question-coverage').textContent = coverage;
+  }
+}
+
+/**
+ * 初始化 Token 消耗折线图
+ */
+async function initTokenCostChart() {
+  const ctx = document.getElementById('token-cost-chart');
+  if (!ctx) return;
+
+  try {
+    // 1. 准备请求参数（获取 31 天的数据，以便计算 30 天的每日增量）
+    const now = new Date();
+    const endTimeUnix = now.getTime();
+    const startTimeUnix = endTimeUnix - (31 * 24 * 60 * 60 * 1000); // 多取一天作为基准
+
+    const params = {
+      start_time_unix_time: startTimeUnix,
+      end_time_unix_time: endTimeUnix
+    };
+
+    // 2. 获取数据
+    const response = await getTokenCost(params);
+    if (response && response.code === 0 && response.data && response.data.records) {
+      const records = response.data.records;
+
+      // 按时间戳排序
+      records.sort((a, b) => a.unix_timestamp - b.unix_timestamp);
+
+      // 处理数据为折线图格式
+      // 注意：如果 records 返回的是累计值，我们需要计算每日消耗
+      // 根据用户描述，"每月每天的消耗 token 量"，通常 records里应该包含了点位
+
+      // 计算每日消耗增量
+      const dailyCosts = [];
+      const labels = [];
+
+      for (let i = 1; i < records.length; i++) {
+        const current = records[i];
+        const previous = records[i - 1];
+
+        // 每日消耗 = 当前累计值 - 前一刻累计值
+        const dailyDiff = Math.max(0, current.token_cost - previous.token_cost);
+        dailyCosts.push(dailyDiff);
+
+        const d = new Date(current.unix_timestamp);
+        labels.push(`${d.getMonth() + 1}/${d.getDate()}`);
+      }
+
+      // 如果数据不足两点，无法计算差值，则使用原始数据
+      const chartData = dailyCosts.length > 0 ? dailyCosts : records.map(r => r.token_cost);
+      const chartLabels = labels.length > 0 ? labels : records.map(r => {
+        const d = new Date(r.unix_timestamp);
+        return `${d.getMonth() + 1}/${d.getDate()}`;
+      });
+
+      // 计算总消耗
+      const totalCost = dailyCosts.length > 0 ?
+        (records[records.length - 1].token_cost - records[0].token_cost) :
+        chartData.reduce((a, b) => a + b, 0);
+
+      document.getElementById('total-token-cost').textContent = Math.max(0, totalCost).toLocaleString();
+
+      // 3. 渲染图表
+      new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: chartLabels,
+          datasets: [{
+            label: 'Token 消耗量',
+            data: chartData,
+            fill: true,
+            borderColor: '#6366F1',
+            backgroundColor: 'rgba(99, 102, 241, 0.1)',
+            tension: 0.4,
+            pointRadius: 3,
+            pointBackgroundColor: '#6366F1',
+            borderWidth: 2
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              display: false
+            },
+            tooltip: {
+              mode: 'index',
+              intersect: false,
+            }
+          },
+          scales: {
+            y: {
+              beginAtZero: true,
+              grid: {
+                color: 'rgba(0, 0, 0, 0.05)'
+              },
+              ticks: {
+                callback: function (value) {
+                  if (value >= 1000000) return (value / 1000000).toFixed(1) + 'M';
+                  if (value >= 1000) return (value / 1000).toFixed(1) + 'k';
+                  return value;
+                }
+              }
+            },
+            x: {
+              grid: {
+                display: false
+              }
+            }
+          }
+        }
+      });
+    }
+  } catch (error) {
+    console.error('初始化 Token 消耗图表失败:', error);
+    const container = ctx.parentElement;
+    if (container) {
+      container.innerHTML = '<div class="chart-error">获取数据失败，请重试</div>';
+    }
   }
 }

@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="AI客服数据看板 - 问题覆盖与回复内容分析">
+  <title>AI客服数据看板 - 回复内容</title>
+  
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  
+  <!-- Custom Styles -->
+  <script type="module" crossorigin src="/assets/js/coverage-CDhpHYhC.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/js/api-fqDCxL2z.js">
+  <link rel="stylesheet" crossorigin href="/assets/css/api-Dh78hMrz.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- 侧边栏 -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <div class="sidebar-logo">🤖</div>
+        <h1 class="sidebar-title">AI 客服中心</h1>
+      </div>
+      
+      <nav class="sidebar-nav">
+        <div class="nav-section">
+          <a href="index.html" class="nav-item">
+            <span class="nav-item-icon">📊</span>
+            <span>接待效率</span>
+          </a>
+          <a href="coverage.html" class="nav-item active">
+            <span class="nav-item-icon">💬</span>
+            <span>回复内容</span>
+          </a>
+        </div>
+        
+        <div class="nav-section">
+          <div class="nav-section-title">配置管理</div>
+          <a href="#" class="nav-item">
+            <span class="nav-item-icon">⚙️</span>
+            <span>规则引擎</span>
+          </a>
+          <a href="#" class="nav-item">
+            <span class="nav-item-icon">📜</span>
+            <span>训练历史</span>
+          </a>
+        </div>
+      </nav>
+      
+      <div class="sidebar-footer">
+        <div class="user-info">
+          <div class="user-avatar">李</div>
+          <div class="user-details">
+            <div class="user-name">李明</div>
+            <div class="user-role">管理员</div>
+          </div>
+        </div>
+      </div>
+    </aside>
+    
+    <!-- 主内容区 -->
+    <main class="main-content">
+      <!-- 顶部导航 -->
+      <header class="top-header">
+        <div class="breadcrumb">
+          <a href="index.html" class="breadcrumb-item">首页</a>
+          <span class="breadcrumb-separator">/</span>
+          <span class="breadcrumb-current">回复内容</span>
+        </div>
+        
+        <div class="header-actions">
+          <div class="date-filter">
+            <button class="date-btn" data-range="yesterday">昨日</button>
+            <button class="date-btn active" data-range="7days">近7日</button>
+            <div class="date-custom-wrapper">
+              <button class="date-btn date-custom-btn" data-range="custom">自定义</button>
+              <div class="date-picker-dropdown" id="date-picker-dropdown">
+                <div class="date-picker-header">选择日期范围</div>
+                <div class="date-picker-inputs">
+                  <div class="date-input-group">
+                    <label>开始日期</label>
+                    <input type="date" id="date-start" class="date-input">
+                  </div>
+                  <span class="date-separator">至</span>
+                  <div class="date-input-group">
+                    <label>结束日期</label>
+                    <input type="date" id="date-end" class="date-input">
+                  </div>
+                </div>
+                <div class="date-picker-actions">
+                  <button class="date-picker-cancel" id="date-picker-cancel">取消</button>
+                  <button class="date-picker-confirm" id="date-picker-confirm">确定</button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <button class="btn-primary">
+            <span>📥</span>
+            导出报告
+          </button>
+          <button class="icon-btn">🔄</button>
+        </div>
+      </header>
+      
+      <!-- 页面内容 -->
+      <div class="page-content">
+        <!-- 页面标题 -->
+        <div class="page-header">
+          <h2 class="page-title">问题覆盖与回复内容</h2>
+          <p class="page-subtitle">分析咨询问题的覆盖率，优化话术和回复内容，提升AI回答质量</p>
+        </div>
+        
+        <!-- 覆盖率统计卡片 -->
+        <div class="stats-grid" style="grid-template-columns: repeat(3, 1fr);">
+          <div class="stat-card blue">
+            <div class="stat-header">
+              <div class="stat-icon blue">❓</div>
+              <span class="stat-change up">+8.2%</span>
+            </div>
+            <div class="stat-label">咨询问题总数</div>
+            <div class="stat-value" id="stat-total-questions">0</div>
+          </div>
+          
+          <div class="stat-card green">
+            <div class="stat-header">
+              <div class="stat-icon green">✅</div>
+              <span class="stat-change up">+10.5%</span>
+            </div>
+            <div class="stat-label">已回复问题数</div>
+            <div class="stat-value" id="stat-answered">0</div>
+          </div>
+          
+          <div class="stat-card purple">
+            <div class="stat-header">
+              <div class="stat-icon purple">📈</div>
+              <span class="stat-change up">+2.3%</span>
+            </div>
+            <div class="stat-label">问题覆盖率</div>
+            <div class="stat-value small"><span id="stat-coverage-rate">0</span><span class="stat-suffix">%</span></div>
+          </div>
+        </div>
+        
+        <!-- 知识库无法回答问题列表 -->
+        <div class="table-container" style="margin-top: 24px;">
+          <div class="table-header">
+            <div>
+              <h3 class="table-title">知识库无法回答问题</h3>
+              <p class="table-subtitle">AI无法从知识库找到答案的咨询记录</p>
+            </div>
+            <a href="#" class="link-text">查看全部</a>
+          </div>
+          
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>买家昵称</th>
+                <th>客服账号</th>
+                <th>无法回答原因</th>
+                <th>时间</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="questions-table-body">
+              <!-- 动态生成 -->
+            </tbody>
+          </table>
+          
+          <div class="pagination" id="questions-pagination">
+            <span class="pagination-info">加载中...</span>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+  
+  <!-- 认证模态框 -->
+  <div id="auth-modal" class="auth-modal">
+    <div class="auth-modal-content" style="position: relative;">
+      <div class="auth-modal-header">
+        <button class="auth-modal-close">✕</button>
+        <div class="auth-modal-logo">🤖</div>
+        <h2 class="auth-modal-title">欢迎使用 AI 客服中心</h2>
+        <p class="auth-modal-subtitle">登录以访问完整功能</p>
+      </div>
+      
+      <div class="auth-modal-body">
+        <!-- 登录表单 -->
+        <form id="login-form" class="auth-form">
+          <div class="form-group">
+            <label class="form-label">邮箱</label>
+            <input type="email" id="login-email" class="form-input" placeholder="请输入邮箱" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">密码</label>
+            <input type="password" id="login-password" class="form-input" placeholder="请输入密码" required>
+          </div>
+          <div id="auth-error" class="auth-error"></div>
+          <button type="submit" class="auth-submit-btn">登录</button>
+          <div class="auth-switch">
+            还没有账号？<a id="switch-to-register">立即注册</a>
+          </div>
+        </form>
+        
+        <!-- 注册表单 -->
+        <form id="register-form" class="auth-form" style="display: none;">
+          <div class="form-group">
+            <label class="form-label">邮箱</label>
+            <input type="email" id="register-email" class="form-input" placeholder="请输入邮箱" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">密码</label>
+            <input type="password" id="register-password" class="form-input" placeholder="请输入密码（至少6位）" required minlength="6">
+          </div>
+          <div class="form-group">
+            <label class="form-label">确认密码</label>
+            <input type="password" id="register-confirm-password" class="form-input" placeholder="请再次输入密码" required>
+          </div>
+          <div id="auth-error" class="auth-error"></div>
+          <button type="submit" class="auth-submit-btn">注册</button>
+          <div class="auth-switch">
+            已有账号？<a id="switch-to-login">立即登录</a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- 对话详情模态框 -->
+  <div id="chat-modal" class="auth-modal">
+    <div class="auth-modal-content" style="width: 600px; max-width: 90%; height: 80vh; display: flex; flex-direction: column; padding: 0; background-color: #ffffff; z-index: 10001;">
+      <div class="auth-modal-header" style="padding: 24px; border-bottom: 1px solid var(--border-color); flex-shrink: 0;">
+        <button class="auth-modal-close" id="chat-modal-close">✕</button>
+        <h2 class="auth-modal-title" style="font-size: 18px; margin-bottom: 4px;">对话详情</h2>
+        <p class="auth-modal-subtitle" id="chat-info">...</p>
+      </div>
+      
+      <div class="chat-content" id="chat-content" style="flex: 1; overflow-y: auto; padding: 24px; background: #F9FAFB;">
+        <!-- 动态生成对话内容 -->
+        <div style="text-align: center; color: #9CA3AF; margin-top: 40px;">加载中...</div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Scripts -->
+</body>
+</html>

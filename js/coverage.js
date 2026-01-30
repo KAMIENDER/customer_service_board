@@ -6,11 +6,18 @@
 import { Chart, registerables } from 'chart.js';
 import { MockData } from './mock-data.js';
 import { initAuth } from './auth.js';
-import { getQuestions, getConversationDetail } from './api.js';
+import { getAllNumCached, getConversationDetail, getQuestions, loadFilterParams, saveFilterParams } from './api.js';
 import '../css/style.css';
 
 // 注册 Chart.js 组件
 Chart.register(...registerables);
+
+// 当前筛选参数（与接待效率页共用）
+let currentFilterParams = { interval: 7 };
+const savedFilterParams = loadFilterParams();
+if (savedFilterParams) {
+  currentFilterParams = savedFilterParams;
+}
 
 // DOM 加载完成后初始化
 document.addEventListener('DOMContentLoaded', function() {
@@ -29,17 +36,76 @@ document.addEventListener('DOMContentLoaded', function() {
 /**
  * 初始化覆盖率统计数据（每日统计）
  */
-function initCoverageStats() {
-  const coverage = MockData.coverageStats;
-  
-  // 动画计数器
-  animateValue('stat-total-questions', 0, coverage.totalQuestions.value, 1500);
-  animateValue('stat-answered', 0, coverage.answeredQuestions.value, 1500);
-  
-  // 设置覆盖率
-  setTimeout(() => {
-    document.getElementById('stat-coverage-rate').textContent = coverage.coverageRate.value;
-  }, 500);
+async function initCoverageStats(params = currentFilterParams) {
+  showCoverageLoadingState();
+
+  try {
+    const response = await getAllNumCached(params);
+
+    if (response && response.code === 0 && response.data) {
+      const data = response.data;
+      const totalQuestions =
+        data.all_question_num !== undefined ? data.all_question_num : data.question_num;
+      const answeredQuestions = data.answer_question_num;
+
+      if (totalQuestions !== undefined) {
+        animateValue('stat-total-questions', 0, totalQuestions, 1500);
+      } else {
+        setTextOrPlaceholder('stat-total-questions', '--');
+      }
+
+      if (answeredQuestions !== undefined) {
+        animateValue('stat-answered', 0, answeredQuestions, 1500);
+      } else {
+        setTextOrPlaceholder('stat-answered', '--');
+      }
+
+      if (totalQuestions && answeredQuestions !== undefined) {
+        const coverageRate = ((answeredQuestions / totalQuestions) * 100).toFixed(2);
+        setTextOrPlaceholder('stat-coverage-rate', coverageRate);
+      } else {
+        setTextOrPlaceholder('stat-coverage-rate', '--');
+      }
+    } else {
+      showCoverageErrorState();
+    }
+  } catch (error) {
+    console.warn('获取覆盖率统计失败:', error?.message || error);
+    showCoverageErrorState();
+  }
+
+  hideCoverageLoadingState();
+}
+
+function showCoverageLoadingState() {
+  const ids = ['stat-total-questions', 'stat-answered', 'stat-coverage-rate'];
+  ids.forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.innerHTML = '<span class="loading-spinner"></span>';
+    el.classList.add('loading');
+  });
+}
+
+function hideCoverageLoadingState() {
+  const ids = ['stat-total-questions', 'stat-answered', 'stat-coverage-rate'];
+  ids.forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.classList.remove('loading');
+  });
+}
+
+function showCoverageErrorState() {
+  setTextOrPlaceholder('stat-total-questions', '--');
+  setTextOrPlaceholder('stat-answered', '--');
+  setTextOrPlaceholder('stat-coverage-rate', '--');
+}
+
+function setTextOrPlaceholder(elementId, value) {
+  const el = document.getElementById(elementId);
+  if (!el) return;
+  el.textContent = value;
 }
 
 /**
@@ -282,12 +348,60 @@ function initDateFilter() {
   if (dateEnd) dateEnd.value = formatDate(today);
   if (dateStart) dateStart.value = formatDate(weekAgo);
 
+  // 应用已保存的筛选参数到 UI
+  if (currentFilterParams?.start_time && currentFilterParams?.end_time) {
+    const start = String(currentFilterParams.start_time).split(' ')[0];
+    const end = String(currentFilterParams.end_time).split(' ')[0];
+    if (dateStart) dateStart.value = start;
+    if (dateEnd) dateEnd.value = end;
+    document.querySelectorAll('.date-btn').forEach(b => b.classList.remove('active'));
+    if (customBtn) {
+      customBtn.classList.add('active', 'has-range');
+      customBtn.textContent = `${formatDisplayDate(start)} - ${formatDisplayDate(end)}`;
+    }
+  } else if (typeof currentFilterParams?.interval === 'number') {
+    const range = `${currentFilterParams.interval}days`;
+    const btn = Array.from(dateButtons).find(b => b.dataset.range === range);
+    if (btn) {
+      document.querySelectorAll('.date-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    }
+  }
+
   // 普通日期按钮点击
   dateButtons.forEach(btn => {
-    btn.addEventListener('click', function() {
+    btn.addEventListener('click', async function() {
       document.querySelectorAll('.date-btn').forEach(b => b.classList.remove('active'));
       this.classList.add('active');
       if (dropdown) dropdown.classList.remove('show');
+
+      // 重置自定义按钮文本
+      if (customBtn) {
+        customBtn.textContent = '自定义';
+        customBtn.classList.remove('has-range');
+      }
+
+      const range = this.dataset.range;
+      if (range === 'yesterday') {
+        const today = new Date();
+        const yesterday = new Date(today);
+        yesterday.setDate(today.getDate() - 1);
+        const yStr = formatDate(yesterday);
+
+        currentFilterParams = {
+          start_time: `${yStr} 00:00:00`,
+          end_time: `${yStr} 23:59:59`
+        };
+      } else if (range.endsWith('days')) {
+        const days = parseInt(range);
+        currentFilterParams = { interval: days };
+      } else {
+        currentFilterParams = { interval: range };
+      }
+
+      saveFilterParams(currentFilterParams);
+      await initCoverageStats(currentFilterParams);
+      await loadQuestionsPage(1);
     });
   });
 
@@ -308,7 +422,7 @@ function initDateFilter() {
 
   // 确定按钮
   if (confirmBtn) {
-    confirmBtn.addEventListener('click', function () {
+    confirmBtn.addEventListener('click', async function () {
       const start = dateStart?.value;
       const end = dateEnd?.value;
 
@@ -318,6 +432,14 @@ function initDateFilter() {
           customBtn.classList.add('active', 'has-range');
           customBtn.textContent = `${formatDisplayDate(start)} - ${formatDisplayDate(end)}`;
         }
+
+        currentFilterParams = {
+          start_time: `${start} 00:00:00`,
+          end_time: `${end} 23:59:59`
+        };
+        saveFilterParams(currentFilterParams);
+        await initCoverageStats(currentFilterParams);
+        await loadQuestionsPage(1);
       }
 
       if (dropdown) dropdown.classList.remove('show');
@@ -389,7 +511,7 @@ async function loadQuestionsPage(page) {
 
   try {
     const response = await getQuestions({
-      interval: 7,
+      ...currentFilterParams,
       offset: offset,
       limit: questionsPageState.pageSize
     });

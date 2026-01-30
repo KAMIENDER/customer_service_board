@@ -1,0 +1,7 @@
+node_modules
+dist
+deploy_package
+deploy_package.tar.gz
+.git
+.DS_Store
+package.sh

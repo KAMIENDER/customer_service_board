@@ -31,7 +31,8 @@ export default defineConfig({
     // 分块策略
     rollupOptions: {
       input: {
-        main: './index.html'
+        main: './index.html',
+        coverage: './coverage.html'
       },
       output: {
         chunkFileNames: 'assets/js/[name]-[hash].js',
