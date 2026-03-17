@@ -25,6 +25,11 @@ let coverageBoardState = {
   answeredQuestions: MockData.coverageStats.answeredQuestions.value
 };
 
+const coverageCategoryExpandState = {
+  general: new Set(),
+  product: new Set()
+};
+
 let questionsPageState = {
   currentPage: 1,
   pageSize: 20,
@@ -34,6 +39,7 @@ let questionsPageState = {
 document.addEventListener('DOMContentLoaded', function () {
   initAuth();
   initCoverageStats();
+  initCoverageCategoryToggle();
   initQuestionsTable();
   initUnansweredDetailModal();
   initChatModal();
@@ -227,7 +233,12 @@ function buildCategoryRows(templates, totalConsult, totalUnanswered) {
 function distributeByWeights(items, key, total) {
   if (!items.length) return [];
 
-  const raw = items.map(item => total * (item[key] || 0));
+  const weights = items.map(item => {
+    const value = Number(item[key] ?? item.weight ?? 1);
+    return Number.isFinite(value) && value > 0 ? value : 1;
+  });
+  const totalWeight = weights.reduce((sum, value) => sum + value, 0) || items.length;
+  const raw = weights.map(weight => total * (weight / totalWeight));
   const values = raw.map(value => Math.floor(value));
   let rest = total - values.reduce((sum, value) => sum + value, 0);
 
@@ -265,35 +276,114 @@ function renderCoverageCategoryRows(tbodyId, rows) {
   const tbody = document.getElementById(tbodyId);
   if (!tbody) return;
 
-  const problemType = tbodyId === 'general-questions-body' ? '通用问法' : '商品问法';
+  const groupType = tbodyId === 'general-questions-body' ? 'general' : 'product';
+  const problemType = groupType === 'general' ? '通用问法' : '商品问法';
+  const expandedGroups = coverageCategoryExpandState[groupType];
+  const groupedRows = groupCoverageRows(rows);
 
-  tbody.innerHTML = rows.map(row => `
-    <tr>
-      <td>
-        <div class="table-cell-main">${row.label}</div>
-      </td>
-      <td>
-        <div class="table-cell-sub category-sub-label">${row.subLabel}</div>
-      </td>
-      <td>${row.consultCount.toLocaleString('zh-CN')}</td>
-      <td>${row.robotReplyCount.toLocaleString('zh-CN')}</td>
-      <td>${formatPercent(row.replyRate)}%</td>
-      <td>${row.unansweredCount.toLocaleString('zh-CN')}</td>
-      <td>
-        ${row.unansweredCount > 0
-          ? `<a href="#"
-              class="link-text"
-              data-detail-key="${row.key}"
-              data-detail-type="${problemType}"
-              data-detail-parent="${row.label}"
-              data-detail-sub="${row.subLabel}"
-              data-detail-count="${row.unansweredCount}">
-              查看未回复明细
-            </a>`
-          : '<span class="table-cell-sub">--</span>'}
-      </td>
-    </tr>
-  `).join('');
+  tbody.innerHTML = groupedRows.map(group => {
+    const expanded = expandedGroups.has(group.label);
+    const groupActionText = expanded ? '收起细分场景' : '展开细分场景';
+
+    const childRows = expanded
+      ? group.items.map(row => `
+        <tr class="coverage-child-row">
+          <td>
+            <div class="coverage-child-placeholder">--</div>
+          </td>
+          <td>
+            <div class="category-sub-label coverage-child-sub-label">${row.subLabel}</div>
+          </td>
+          <td>${row.consultCount.toLocaleString('zh-CN')}</td>
+          <td>${row.robotReplyCount.toLocaleString('zh-CN')}</td>
+          <td>${formatPercent(row.replyRate)}%</td>
+          <td>${row.unansweredCount.toLocaleString('zh-CN')}</td>
+          <td>
+            ${row.unansweredCount > 0
+              ? `<a href="#"
+                  class="link-text"
+                  data-detail-key="${row.key}"
+                  data-detail-type="${problemType}"
+                  data-detail-parent="${row.label}"
+                  data-detail-sub="${row.subLabel}"
+                  data-detail-count="${row.unansweredCount}">
+                  查看未回复明细
+                </a>`
+              : '<span class="table-cell-sub">--</span>'}
+          </td>
+        </tr>
+      `).join('')
+      : '';
+
+    return `
+      <tr class="coverage-group-row ${expanded ? 'expanded' : ''}" data-group-toggle="true" data-group-type="${groupType}" data-group-label="${group.label}">
+        <td>
+          <div class="coverage-group-label">
+            <span class="coverage-group-arrow">${expanded ? '▾' : '▸'}</span>
+            <div>
+              <div class="table-cell-main">${group.label}</div>
+              <div class="table-cell-sub">${group.items.length} 个细分场景</div>
+            </div>
+          </div>
+        </td>
+        <td><span class="table-cell-sub">${expanded ? '已展开细分场景' : '点击展开查看细分场景'}</span></td>
+        <td>${group.consultCount.toLocaleString('zh-CN')}</td>
+        <td>${group.robotReplyCount.toLocaleString('zh-CN')}</td>
+        <td>${formatPercent(group.replyRate)}%</td>
+        <td>${group.unansweredCount.toLocaleString('zh-CN')}</td>
+        <td><span class="link-text coverage-group-action">${groupActionText}</span></td>
+      </tr>
+      ${childRows}
+    `;
+  }).join('');
+}
+
+function groupCoverageRows(rows) {
+  const groups = new Map();
+
+  rows.forEach(row => {
+    if (!groups.has(row.label)) {
+      groups.set(row.label, {
+        label: row.label,
+        items: [],
+        consultCount: 0,
+        robotReplyCount: 0,
+        unansweredCount: 0
+      });
+    }
+
+    const group = groups.get(row.label);
+    group.items.push(row);
+    group.consultCount += row.consultCount;
+    group.robotReplyCount += row.robotReplyCount;
+    group.unansweredCount += row.unansweredCount;
+  });
+
+  return Array.from(groups.values()).map(group => ({
+    ...group,
+    replyRate: percentage(group.robotReplyCount, group.consultCount)
+  }));
+}
+
+function initCoverageCategoryToggle() {
+  document.addEventListener('click', event => {
+    const groupRow = event.target.closest('[data-group-toggle="true"]');
+    if (!groupRow) return;
+    if (event.target.closest('[data-detail-key]')) return;
+
+    const groupType = groupRow.dataset.groupType;
+    const groupLabel = groupRow.dataset.groupLabel;
+    const expandedGroups = coverageCategoryExpandState[groupType];
+    if (!expandedGroups || !groupLabel) return;
+
+    if (expandedGroups.has(groupLabel)) {
+      expandedGroups.delete(groupLabel);
+    } else {
+      expandedGroups.add(groupLabel);
+    }
+
+    renderUnansweredCoverageBoard();
+  });
 }
 
 function initUnansweredDetailModal() {
@@ -367,7 +457,8 @@ function openUnansweredDetailModal({ detailKey, problemType, parentLabel, subLab
     return;
   }
 
-  const detailItems = MockData.unansweredDetailBoard.detailSamples[detailKey] || [];
+  const detailItems = MockData.unansweredDetailBoard.detailSamples[detailKey]
+    || buildGenericDetailItems({ parentLabel, subLabel, unansweredCount, detailKey });
 
   title.textContent = `${parentLabel} / ${subLabel} 未回复问题明细`;
   subtitle.textContent = `当前展示该分类下的未回复问题摘要，可继续查看会话内容确认具体问题。`;
@@ -396,6 +487,19 @@ function openUnansweredDetailModal({ detailKey, problemType, parentLabel, subLab
   }
 
   modal.classList.add('show');
+}
+
+function buildGenericDetailItems({ parentLabel, subLabel, unansweredCount, detailKey }) {
+  const count = Math.min(Math.max(unansweredCount, 1), 3);
+
+  return Array.from({ length: count }, (_, index) => ({
+    buyerNick: `sample_user_${index + 1}`,
+    sellerNick: '旗舰店客服',
+    issue: `${parentLabel} / ${subLabel} 标签问题待补充`,
+    question: `关于「${subLabel}」的第 ${index + 1} 条未回复问题示例`,
+    createdAt: `2026-03-${String(15 - index).padStart(2, '0')} 10:${String(12 + index * 7).padStart(2, '0')}`,
+    conversationId: `mock-${detailKey}-${index + 1}`
+  }));
 }
 
 async function initQuestionsTable() {

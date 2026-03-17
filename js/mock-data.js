@@ -3,6 +3,67 @@
  * 根据需求文档整理的P1优先级指标数据
  */
 
+const generalQuestionTagGroups = [
+  {
+    label: '物流/发货问题',
+    tags: ['送货上门', '未发货改地址', '发货时长', '发货地址', '收货时长', '发货快递', '到货时间', '改地址', '拦截']
+  },
+  {
+    label: '退款操作说明',
+    tags: ['购物金退款', '退货申请', '差价申请', '差价超7天', '差价7天内', '拦截退款', '过敏同框照']
+  },
+  {
+    label: '敏感话题回复',
+    tags: ['质检报告', '营业执照', '中文标签', '成分表', '三无产品', '中国销售', 'FDA标准', '工厂信息', '中国生产', '苏州工厂', '不同店铺', '品牌', '产地', '旗舰店', '进口化妆品']
+  },
+  {
+    label: '售后相关',
+    tags: ['差价规则', '虚假签收', '7天退货不支持', '安抚', '过敏测试', '破损', '丢件', '催件', '头屑&头痒', '晚到必赔', '退款挽留', '差评投诉', '预警升级', '飞机高铁', '发票', '保质期']
+  },
+  {
+    label: '产品用量&方法',
+    tags: ['洗发水用量', '洗发水用法', '洗发水泡沫', '湿发固色用量', '湿发固色用法', '干发染色用量', '干发染色用法', '干发染色警告', '固色发膜用法', '滴滴染用法', '洗发水对比', '洗发水补色', '固色套组使用方法']
+  }
+];
+
+const productQuestionTagGroups = [
+  {
+    label: '固色产品通用用量&方法',
+    tags: ['洗发水用量', '洗发水用法', '洗发水泡沫', '湿发固色用量', '湿发固色用法', '干发染色用量', '干发染色用法', '干发染色警告', '固色发膜用法', '洗发水对比', '洗发水补色', '固色套组使用方法']
+  },
+  {
+    label: '固色套组',
+    tags: ['灰棕注意事项', '雾霾灰&银灰色区别', '灰发注意事项', '银发&白发的区别', '粉色注意事项', '去黄和紫色区别', '去绿推荐']
+  },
+  {
+    label: '去黄套组',
+    tags: ['去黄套组使用方法', '去黄适用度数', '去黄原理', '白金预期管理']
+  },
+  {
+    label: '去绿相关',
+    tags: ['去绿使用频率', '去绿适用发色', '去绿原理', '去绿用法', '去绿非漂染', '去绿没效果', '去绿用后变粉', '去绿担忧变粉', '去绿能否固色', '去绿与粉色区别', '去绿预期']
+  },
+  {
+    label: '卷卷精油相关',
+    tags: ['卷卷精油详细成分', '卷卷精油和直板夹', '卷卷精油卷烫后使用', '卷卷精油使用手法', '卷卷精油介绍', '卷卷精油卷发后使用', '卷卷精油效果', '卷卷精油容量', '卷卷精油分层有泡沫', '卷卷精油普通精油区别', '卷卷精油喷雾发胶区别', '卷卷精油料体', '卷卷精油气味', '卷卷精油成分', '卷卷精油各种卷发形式', '卷卷精油卷发前使用', '卷卷精油不卷发人群', '卷卷精油摇匀', '卷卷精油用法', '卷卷精油定型成因', '卷卷精油作用']
+  },
+  {
+    label: '一号发膜相关',
+    tags: ['一号发膜用法', '洗前发膜和护发素的区别', '洗前发膜成分', '洗前发膜介绍']
+  }
+];
+
+function buildQuestionTemplates(groups, prefix) {
+  return groups.flatMap((group, groupIndex) =>
+    group.tags.map((tag, tagIndex) => ({
+      key: `${prefix}-${groupIndex + 1}-${tagIndex + 1}`,
+      label: group.label,
+      subLabel: tag,
+      weight: 1
+    }))
+  );
+}
+
 export const MockData = {
   // ========================================
   // 第一个Tab：辅助售前接待效率 (P1)
@@ -159,19 +220,8 @@ export const MockData = {
       presaleConsultShare: 0.68,
       presaleAnsweredShare: 0.7
     },
-    generalQuestionTemplates: [
-      { key: 'logistics', label: '物流相关', subLabel: '催发货', consultShare: 0.34, unansweredShare: 0.32 },
-      { key: 'shipping', label: '发货相关', subLabel: '发货时效', consultShare: 0.27, unansweredShare: 0.24 },
-      { key: 'image', label: '发送图片', subLabel: '图片识别', consultShare: 0.18, unansweredShare: 0.2 },
-      { key: 'general-other', label: '其他', subLabel: '通用咨询', consultShare: 0.21, unansweredShare: 0.24 }
-    ],
-    productQuestionTemplates: [
-      { key: 'oil-usage', label: '卷卷精油', subLabel: '用法', consultShare: 0.24, unansweredShare: 0.21 },
-      { key: 'mask-color', label: '固色发膜', subLabel: '适用发质', consultShare: 0.21, unansweredShare: 0.19 },
-      { key: 'shampoo-color', label: '固色洗发水', subLabel: '使用频率', consultShare: 0.2, unansweredShare: 0.18 },
-      { key: 'mask-no1', label: '1号发膜', subLabel: '搭配使用', consultShare: 0.17, unansweredShare: 0.16 },
-      { key: 'product-other', label: '其他', subLabel: '商品咨询', consultShare: 0.18, unansweredShare: 0.26 }
-    ],
+    generalQuestionTemplates: buildQuestionTemplates(generalQuestionTagGroups, 'general'),
+    productQuestionTemplates: buildQuestionTemplates(productQuestionTagGroups, 'product'),
     detailSamples: {
       logistics: [
         { buyerNick: 'huahua88', sellerNick: '旗舰店客服', issue: '物流催发货咨询未命中', question: '为什么我的订单还没发货？', createdAt: '2026-03-15 14:20', conversationId: 'mock-logistics-001' },
