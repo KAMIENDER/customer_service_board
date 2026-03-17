@@ -14,9 +14,10 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   
   <!-- Custom Styles -->
-  <script type="module" crossorigin src="/assets/js/coverage-CDhpHYhC.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/js/api-fqDCxL2z.js">
-  <link rel="stylesheet" crossorigin href="/assets/css/api-Dh78hMrz.css">
+  <script type="module" crossorigin src="/assets/js/coverage-9-skzD_v.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/js/auth-BTmkCpS1.js">
+  <link rel="modulepreload" crossorigin href="/assets/js/api-FkEQYxFw.js">
+  <link rel="stylesheet" crossorigin href="/assets/css/auth-C8AJPu-X.css">
 </head>
 <body>
   <div class="app-container">
@@ -33,6 +34,10 @@
             <span class="nav-item-icon">📊</span>
             <span>接待效率</span>
           </a>
+          <a href="handover.html" class="nav-item">
+            <span class="nav-item-icon">🎯</span>
+            <span>转人工维度</span>
+          </a>
           <a href="coverage.html" class="nav-item active">
             <span class="nav-item-icon">💬</span>
             <span>回复内容</span>
@@ -41,6 +46,10 @@
         
         <div class="nav-section">
           <div class="nav-section-title">配置管理</div>
+          <a href="knowledge-base.html" class="nav-item">
+            <span class="nav-item-icon">📚</span>
+            <span>知识库管理</span>
+          </a>
           <a href="#" class="nav-item">
             <span class="nav-item-icon">⚙️</span>
             <span>规则引擎</span>
@@ -144,17 +153,96 @@
             <div class="stat-value small"><span id="stat-coverage-rate">0</span><span class="stat-suffix">%</span></div>
           </div>
         </div>
-        
+
+        <div class="table-container" style="margin-top: 24px;">
+          <div class="table-header">
+            <div>
+              <h3 class="table-title">综合问题数</h3>
+              <p class="table-subtitle">按售前 / 售后拆分咨询问题总数、已回复问题总数和已回复问题覆盖率</p>
+            </div>
+          </div>
+
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>问题类型</th>
+                <th>咨询问题总数</th>
+                <th>已回复问题总数</th>
+                <th>已回复问题覆盖率</th>
+              </tr>
+            </thead>
+            <tbody id="coverage-summary-body">
+              <!-- 动态生成 -->
+            </tbody>
+          </table>
+        </div>
+
+        <div class="table-container" style="margin-top: 24px;">
+          <div class="table-header">
+            <div>
+              <h3 class="table-title">通用问法</h3>
+              <p class="table-subtitle">按场景名称拆分咨询次数、机器人回复数、回复率和未回复问题数，并支持查看明细</p>
+            </div>
+          </div>
+
+          <div class="table-scroll">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>场景名称</th>
+                  <th>细分场景</th>
+                  <th>咨询次数</th>
+                  <th>机器人回复数</th>
+                  <th>机器人回复率</th>
+                  <th>未回复问题数</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="general-questions-body">
+                <!-- 动态生成 -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="table-container" style="margin-top: 24px;">
+          <div class="table-header">
+            <div>
+              <h3 class="table-title">商品问法</h3>
+              <p class="table-subtitle">按商品名称和细分场景查看咨询次数、回复数、回复率和未回复问题数</p>
+            </div>
+          </div>
+
+          <div class="table-scroll">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>商品名称</th>
+                  <th>细分场景</th>
+                  <th>咨询次数</th>
+                  <th>机器人回复数</th>
+                  <th>机器人回复率</th>
+                  <th>未回复问题数</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="product-questions-body">
+                <!-- 动态生成 -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
         <!-- 知识库无法回答问题列表 -->
         <div class="table-container" style="margin-top: 24px;">
           <div class="table-header">
             <div>
-              <h3 class="table-title">知识库无法回答问题</h3>
-              <p class="table-subtitle">AI无法从知识库找到答案的咨询记录</p>
+              <h3 class="table-title">未回复问题原始记录</h3>
+              <p class="table-subtitle">保留接口原始问题列表，用于辅助核对未回复记录和查看完整会话</p>
             </div>
             <a href="#" class="link-text">查看全部</a>
           </div>
-          
+
           <table class="data-table">
             <thead>
               <tr>
@@ -169,13 +257,75 @@
               <!-- 动态生成 -->
             </tbody>
           </table>
-          
+
           <div class="pagination" id="questions-pagination">
             <span class="pagination-info">加载中...</span>
           </div>
         </div>
       </div>
     </main>
+  </div>
+
+  <div id="unanswered-detail-modal" class="auth-modal">
+    <div class="auth-modal-content unanswered-detail-modal-content">
+      <div class="auth-modal-header unanswered-detail-header">
+        <button class="auth-modal-close" id="unanswered-detail-close">✕</button>
+        <h2 class="auth-modal-title" id="unanswered-detail-title">细分场景问题展示</h2>
+        <p class="auth-modal-subtitle" id="unanswered-detail-subtitle">查看当前分类下的未回复问题摘要、知识文档动作和样例问题</p>
+      </div>
+
+      <div class="auth-modal-body unanswered-detail-body">
+        <div class="detail-overview-card">
+          <div class="detail-overview-title">分类摘要</div>
+          <div class="detail-overview-grid">
+            <div class="detail-overview-label">
+              <span>问题类型</span>
+              <em id="detail-unanswered-type-count">未回复 0</em>
+            </div>
+            <div class="detail-overview-value" id="detail-problem-type">--</div>
+
+            <div class="detail-overview-label">
+              <span>所属场景 / 商品</span>
+              <em id="detail-unanswered-parent-count">未回复 0</em>
+            </div>
+            <div class="detail-overview-value" id="detail-parent-label">--</div>
+
+            <div class="detail-overview-label">
+              <span>细分场景</span>
+              <em id="detail-unanswered-sub-count">未回复 0</em>
+            </div>
+            <div class="detail-overview-value" id="detail-sub-label">--</div>
+          </div>
+
+          <div class="detail-actions-row">
+            <button type="button" class="detail-action-btn secondary" id="detail-upload-doc-btn">上传对应知识文档</button>
+            <button type="button" class="detail-action-btn secondary" id="detail-confirm-doc-btn">确认知识文档</button>
+          </div>
+
+          <button type="button" class="detail-action-btn primary wide" id="detail-mock-test-btn">
+            开始模拟测试
+            <span>根据新上传知识文档测试问题回复情况</span>
+          </button>
+        </div>
+
+        <div class="table-scroll unanswered-detail-scroll">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>买家ID</th>
+                <th>无法回复问题</th>
+                <th>是否回复</th>
+                <th>时间</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="unanswered-detail-body">
+              <!-- 动态生成 -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
   </div>
   
   <!-- 认证模态框 -->

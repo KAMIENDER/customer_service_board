@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="AI客服数据看板 - 实时监控AI客服接待效率与问题覆盖率">
-  <title>AI客服数据看板 - 接待效率分析</title>
+  <meta name="description" content="AI客服数据看板 - 按 Excel 需求拆分四类接待效率数据">
+  <title>AI客服数据看板 - Excel 版接待效率</title>
   
   <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -13,9 +13,10 @@
   
   
   <!-- Custom Styles -->
-  <script type="module" crossorigin src="/assets/js/main-4oWR8GQj.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/js/api-fqDCxL2z.js">
-  <link rel="stylesheet" crossorigin href="/assets/css/api-Dh78hMrz.css">
+  <script type="module" crossorigin src="/assets/js/main-MlTUOAA_.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/js/auth-BTmkCpS1.js">
+  <link rel="modulepreload" crossorigin href="/assets/js/api-FkEQYxFw.js">
+  <link rel="stylesheet" crossorigin href="/assets/css/auth-C8AJPu-X.css">
 </head>
 <body>
   <div class="app-container">
@@ -32,6 +33,10 @@
             <span class="nav-item-icon">📊</span>
             <span>接待效率</span>
           </a>
+          <a href="handover.html" class="nav-item">
+            <span class="nav-item-icon">🎯</span>
+            <span>转人工维度</span>
+          </a>
           <a href="coverage.html" class="nav-item">
             <span class="nav-item-icon">💬</span>
             <span>回复内容</span>
@@ -40,6 +45,10 @@
         
         <div class="nav-section">
           <div class="nav-section-title">配置管理</div>
+          <a href="knowledge-base.html" class="nav-item">
+            <span class="nav-item-icon">📚</span>
+            <span>知识库管理</span>
+          </a>
           <a href="#" class="nav-item">
             <span class="nav-item-icon">⚙️</span>
             <span>规则引擎</span>
@@ -69,7 +78,7 @@
         <div class="breadcrumb">
           <a href="#" class="breadcrumb-item">首页</a>
           <span class="breadcrumb-separator">/</span>
-          <span class="breadcrumb-current">接待效率分析</span>
+          <span class="breadcrumb-current">Excel 版接待效率</span>
         </div>
         
         <div class="header-actions">
@@ -98,11 +107,11 @@
               </div>
             </div>
           </div>
-          <button class="btn-primary">
+          <button class="btn-primary" id="export-report-btn">
             <span>📥</span>
-            导出报告
+            导出看板
           </button>
-          <button class="icon-btn">🔄</button>
+          <button class="icon-btn" id="refresh-dashboard-btn">🔄</button>
         </div>
       </header>
       
@@ -110,157 +119,210 @@
       <div class="page-content">
         <!-- 页面标题 -->
         <div class="page-header">
-          <h2 class="page-title">AI 接待效率分析</h2>
-          <p class="page-subtitle">监控AI客服的接待指标，分析转人工和转化数据，持续优化服务效率</p>
+          <h2 class="page-title">AI 接待效率看板</h2>
+          <p class="page-subtitle">按《数据看板需求.xlsx》拆成 4 个业务 tab，并保留 Token 消耗趋势 tab 方便一起查看</p>
         </div>
-        
-        <!-- 节省人力成本条 -->
-        <div class="bottom-bar" style="margin-top: 0; margin-bottom: 24px;">
-          <div class="bottom-bar-content">
-            <div class="bottom-bar-icon">💡</div>
+
+        <div class="dashboard-summary-banner">
+          <div>
+            <div class="dashboard-summary-title">当前视图以 Excel 版字段结构展示</div>
+            <div class="dashboard-summary-subtitle">已接入接口字段直接显示，未接入字段按现有聚合数据推导，便于先对齐版式和口径</div>
+          </div>
+          <div class="dashboard-summary-meta">
+            <span class="summary-pill">需求基准：数据看板需求.xlsx</span>
+            <span class="summary-pill muted">日期筛选对接待类 4 个 tab 同步生效</span>
+          </div>
+        </div>
+
+        <div class="dashboard-tabs-shell">
+          <div class="filter-tabs dashboard-tabs" role="tablist" aria-label="Excel 看板分类">
+            <button class="filter-tab dashboard-tab active" data-tab="overview" role="tab" aria-selected="true">AI接待效率</button>
+            <button class="filter-tab dashboard-tab" data-tab="auto" role="tab" aria-selected="false">AI全自动接待未转人工效率</button>
+            <button class="filter-tab dashboard-tab" data-tab="assist" role="tab" aria-selected="false">AI辅助人工接待效率</button>
+            <button class="filter-tab dashboard-tab" data-tab="scene" role="tab" aria-selected="false">AI接待场景接待人数体现</button>
+            <button class="filter-tab dashboard-tab" data-tab="token" role="tab" aria-selected="false">Token消耗</button>
+          </div>
+        </div>
+
+        <section class="tab-panel active" data-tab-panel="overview">
+          <div class="dashboard-section-title">
             <div>
-              <div class="bottom-bar-text">本周预估节省人力成本</div>
-              <div class="bottom-bar-sub">基于AI自动解决率计算</div>
+              <h3 class="chart-title">AI接待效率</h3>
+              <p class="table-subtitle">对齐 Excel 第一行总览字段，优先展示店铺总接待、AI接待覆盖和自动/辅助拆分</p>
             </div>
           </div>
-          <div class="staff-avatars">
-            <!-- 动态生成数字 -->
-            <div id="human-saved-count" class="saved-count-box">0</div>
-            <span class="staff-label">人天</span>
-          </div>
-        </div>
-        
-        <!-- 核心统计卡片 - 每日统计 -->
-        <div class="stats-grid" style="grid-template-columns: repeat(3, 1fr);">
-          <div class="stat-card blue">
-            <div class="stat-header">
-              <div class="stat-icon blue">💬</div>
-              <span class="stat-change up">+12.5%</span>
-            </div>
-            <div class="stat-label">AI接待人数</div>
-            <div class="stat-value" id="stat-ai-reception">0</div>
-          </div>
-          
-          <div class="stat-card orange">
-            <div class="stat-header">
-              <div class="stat-icon orange">⚠️</div>
-              <span class="stat-change up">+2.1%</span>
-            </div>
-            <div class="stat-label">三句话无响应人数</div>
-            <div class="stat-value" id="stat-no-response">0</div>
-          </div>
-          
-          <div class="stat-card purple">
-            <div class="stat-header">
-              <div class="stat-icon purple">👤</div>
-              <span class="stat-change down">-5.3%</span>
-            </div>
-            <div class="stat-label">转人工人数</div>
-            <div class="stat-value" id="stat-handover">0</div>
-          </div>
-          
-          <div class="stat-card cyan">
-            <div class="stat-header">
-              <div class="stat-icon cyan">📊</div>
-              <span class="stat-change down">-4.2%</span>
-            </div>
-            <div class="stat-label">AI转接率</div>
-            <div class="stat-value small"><span id="stat-handover-rate">0</span><span class="stat-suffix">%</span></div>
-          </div>
-          
-          <div class="stat-card" style="background: linear-gradient(135deg, #FEE2E2 0%, #FECACA 100%);">
-            <div class="stat-header">
-              <div class="stat-icon red">❓</div>
-              <span class="stat-change down">-8.2%</span>
-            </div>
-            <div class="stat-label">无法回答转人工人数</div>
-            <div class="stat-value" id="stat-no-answer-handover">0</div>
-          </div>
-          
-          <div class="stat-card" style="background: linear-gradient(135deg, #FCE7F3 0%, #FBCFE8 100%);">
-            <div class="stat-header">
-              <div class="stat-icon" style="background: rgba(236, 72, 153, 0.2); color: #EC4899;">📉</div>
-              <span class="stat-change down">-6.5%</span>
-            </div>
-            <div class="stat-label">无法回答转接率</div>
-            <div class="stat-value small"><span id="stat-no-answer-rate">0</span><span class="stat-suffix">%</span></div>
-          </div>
-        </div>
-        
-        <!-- 售前接待问题覆盖及调教 -->
-        <div class="chart-container" style="margin-bottom: 24px;">
-          <div class="chart-header">
-            <h3 class="chart-title">售前接待问题覆盖及调教 <span style="font-size: 12px; color: #9CA3AF; font-weight: 400;">（针对问题覆盖率进行话术优化、编辑）</span></h3>
-          </div>
-          <div class="stats-grid" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 0;">
-            <div class="stat-card" style="background: linear-gradient(135deg, #EEF2FF 0%, #E0E7FF 100%); margin: 0;">
-              <div class="stat-header">
-                <div class="stat-icon" style="background: rgba(99, 102, 241, 0.2); color: #6366F1;">❓</div>
-                <span class="stat-change up">+10.2%</span>
-              </div>
-              <div class="stat-label">咨询问题数</div>
-              <div class="stat-value" id="stat-all-questions">0</div>
-            </div>
-            
-            <div class="stat-card" style="background: linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 100%); margin: 0;">
-              <div class="stat-header">
-                <div class="stat-icon" style="background: rgba(16, 185, 129, 0.2); color: #10B981;">✅</div>
-                <span class="stat-change up">+12.1%</span>
-              </div>
-              <div class="stat-label">已回复问题数</div>
-              <div class="stat-value" id="stat-answered-questions">0</div>
-            </div>
-            
-            <div class="stat-card" style="background: linear-gradient(135deg, #F0F9FF 0%, #BAE6FD 100%); margin: 0;">
-              <div class="stat-header">
-                <div class="stat-icon" style="background: rgba(14, 165, 233, 0.2); color: #0EA5E9;">📈</div>
-                <span class="stat-change up">+1.5%</span>
-              </div>
-              <div class="stat-label">问题覆盖率</div>
-              <div class="stat-value small"><span id="stat-question-coverage">0</span><span class="stat-suffix">%</span></div>
-            </div>
-          </div>
-        </div>
 
-        <!-- 询单相关统计 - 统计三日内 -->
-        <div class="chart-container" style="margin-bottom: 24px;">
-          <div class="chart-header">
-            <h3 class="chart-title">询单转化统计 <span style="font-size: 12px; color: #9CA3AF; font-weight: 400;">（统计周期：近三日）</span></h3>
+          <div class="stats-grid workbook-kpi-grid">
+            <div class="stat-card blue">
+              <div class="stat-header"><div class="stat-icon blue">🏬</div></div>
+              <div class="stat-label">店铺总接待人数</div>
+              <div class="stat-value" id="stat-store-total">--</div>
+            </div>
+            <div class="stat-card green">
+              <div class="stat-header"><div class="stat-icon green">🤖</div></div>
+              <div class="stat-label">AI接待人数</div>
+              <div class="stat-value" id="stat-ai-reception">--</div>
+            </div>
+            <div class="stat-card cyan">
+              <div class="stat-header"><div class="stat-icon cyan">📊</div></div>
+              <div class="stat-label">AI接待覆盖率</div>
+              <div class="stat-value small"><span id="stat-ai-coverage-rate">--</span><span class="stat-suffix">%</span></div>
+            </div>
+            <div class="stat-card purple">
+              <div class="stat-header"><div class="stat-icon purple">⚙️</div></div>
+              <div class="stat-label">AI全自动接待人数</div>
+              <div class="stat-value" id="stat-auto-reception">--</div>
+            </div>
+            <div class="stat-card" style="background: linear-gradient(135deg, #FAF5FF 0%, #F3E8FF 100%);">
+              <div class="stat-header"><div class="stat-icon" style="background: rgba(139, 92, 246, 0.16); color: #8B5CF6;">✨</div></div>
+              <div class="stat-label">AI全自动接待率</div>
+              <div class="stat-value small"><span id="stat-auto-rate">--</span><span class="stat-suffix">%</span></div>
+            </div>
+            <div class="stat-card" style="background: linear-gradient(135deg, #FFF7ED 0%, #FFEDD5 100%);">
+              <div class="stat-header"><div class="stat-icon orange">🧑‍💼</div></div>
+              <div class="stat-label">AI辅助接待人数</div>
+              <div class="stat-value" id="stat-assist-reception">--</div>
+            </div>
+            <div class="stat-card" style="background: linear-gradient(135deg, #FFF8E1 0%, #FDE68A 100%);">
+              <div class="stat-header"><div class="stat-icon" style="background: rgba(217, 119, 6, 0.18); color: #D97706;">📍</div></div>
+              <div class="stat-label">AI辅助接待率</div>
+              <div class="stat-value small"><span id="stat-assist-rate">--</span><span class="stat-suffix">%</span></div>
+            </div>
           </div>
-          <div class="stats-grid" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 0;">
-            <div class="stat-card green" style="margin: 0;">
-              <div class="stat-header">
-                <div class="stat-icon green">🛒</div>
-                <span class="stat-change up">+5.2%</span>
-              </div>
-              <div class="stat-label">AI询单人数</div>
-              <div class="stat-value" id="stat-inquiry-count">0</div>
+        </section>
+
+        <section class="tab-panel" data-tab-panel="auto">
+          <div class="dashboard-section-title">
+            <div>
+              <h3 class="chart-title">AI全自动接待未转人工效率</h3>
+              <p class="table-subtitle">按“用户回话 3 句话以内 / 3 句话以上”拆分自动接待会话的询单转化表现</p>
             </div>
-            
-            <div class="stat-card" style="background: linear-gradient(135deg, #FEF3C7 0%, #FDE68A 100%); margin: 0;">
-              <div class="stat-header">
-                <div class="stat-icon" style="background: rgba(245, 158, 11, 0.2); color: #F59E0B;">💳</div>
-                <span class="stat-change up">+8.6%</span>
-              </div>
-              <div class="stat-label">询单支付人数</div>
-              <div class="stat-value" id="stat-payment-count">0</div>
-            </div>
-            
-            <div class="stat-card" style="background: linear-gradient(135deg, #D1FAE5 0%, #A7F3D0 100%); margin: 0;">
-              <div class="stat-header">
-                <div class="stat-icon" style="background: rgba(16, 185, 129, 0.2); color: #10B981;">💰</div>
-                <span class="stat-change up">+0.8%</span>
-              </div>
-              <div class="stat-label">询单支付转化率</div>
-              <div class="stat-value small"><span id="stat-conversion">0</span><span class="stat-suffix">%</span></div>
+            <span class="summary-pill muted">当前为接口聚合值推导展示</span>
+          </div>
+
+          <div class="table-container workbook-table-card">
+            <div class="table-scroll">
+              <table class="data-table workbook-data-table">
+                <thead>
+                  <tr>
+                    <th>用户会话量分类</th>
+                    <th>接待人数</th>
+                    <th>询单人数</th>
+                    <th>询单成交人数（退款前）</th>
+                    <th>询单成交金额（退款前）</th>
+                    <th>询单转化率（退款前）</th>
+                    <th>询单成交客单价</th>
+                  </tr>
+                </thead>
+                <tbody id="auto-efficiency-table-body"></tbody>
+              </table>
             </div>
           </div>
-        </div>
-        
+        </section>
 
-        
+        <section class="tab-panel" data-tab-panel="assist">
+          <div class="dashboard-section-title">
+            <div>
+              <h3 class="chart-title">AI辅助人工接待效率</h3>
+              <p class="table-subtitle">聚焦人工介入后的接待、询单与成交表现，保持和 Excel 第三块字段一致</p>
+            </div>
+            <span class="summary-pill muted">辅助接待人数当前按转人工人数映射</span>
+          </div>
 
-        
+          <div class="stats-grid workbook-kpi-grid assist-grid">
+            <div class="stat-card blue">
+              <div class="stat-header"><div class="stat-icon blue">👥</div></div>
+              <div class="stat-label">接待人数</div>
+              <div class="stat-value" id="assist-stat-reception">--</div>
+            </div>
+            <div class="stat-card orange">
+              <div class="stat-header"><div class="stat-icon orange">🛒</div></div>
+              <div class="stat-label">询单人数</div>
+              <div class="stat-value" id="assist-stat-inquiry">--</div>
+            </div>
+            <div class="stat-card green">
+              <div class="stat-header"><div class="stat-icon green">💳</div></div>
+              <div class="stat-label">询单成交人数（退款前）</div>
+              <div class="stat-value" id="assist-stat-order-count">--</div>
+            </div>
+            <div class="stat-card cyan">
+              <div class="stat-header"><div class="stat-icon cyan">💰</div></div>
+              <div class="stat-label">询单成交金额（退款前）</div>
+              <div class="stat-value small" id="assist-stat-order-amount">--</div>
+            </div>
+            <div class="stat-card purple">
+              <div class="stat-header"><div class="stat-icon purple">📈</div></div>
+              <div class="stat-label">询单转化率（退款前）</div>
+              <div class="stat-value small"><span id="assist-stat-conversion-rate">--</span><span class="stat-suffix">%</span></div>
+            </div>
+            <div class="stat-card" style="background: linear-gradient(135deg, #FEF2F2 0%, #FECACA 100%);">
+              <div class="stat-header"><div class="stat-icon red">🧾</div></div>
+              <div class="stat-label">询单成交客单价</div>
+              <div class="stat-value small" id="assist-stat-aov">--</div>
+            </div>
+          </div>
+        </section>
+
+        <section class="tab-panel" data-tab-panel="scene">
+          <div class="dashboard-section-title">
+            <div>
+              <h3 class="chart-title">AI接待场景接待人数体现</h3>
+              <p class="table-subtitle">按照 Excel 的场景列展示人数和占比，方便和客户需求转人工原因对齐</p>
+            </div>
+          </div>
+
+          <div class="scene-summary-grid">
+            <div class="scene-summary-card">
+              <span class="scene-summary-label">整体转人工总量</span>
+              <strong id="scene-total-transfer">--</strong>
+            </div>
+            <div class="scene-summary-card">
+              <span class="scene-summary-label">无法解答问题转接</span>
+              <strong id="scene-no-answer-transfer">--</strong>
+            </div>
+            <div class="scene-summary-card">
+              <span class="scene-summary-label">场景占比基准</span>
+              <strong>统计整体</strong>
+            </div>
+          </div>
+
+          <div class="table-container workbook-table-card">
+            <div class="table-scroll">
+              <table class="data-table workbook-matrix-table">
+                <thead>
+                  <tr id="scene-header-row"></tr>
+                </thead>
+                <tbody>
+                  <tr id="scene-count-row"></tr>
+                  <tr id="scene-share-row"></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section class="tab-panel" data-tab-panel="token">
+          <div class="dashboard-section-title">
+            <div>
+              <h3 class="chart-title">过去 30 天 Token 消耗趋势</h3>
+              <p class="table-subtitle">保留原来的 token 消耗分析，用于观察最近 30 天按日增量的调用成本变化</p>
+            </div>
+            <div class="chart-legend">
+              <span class="legend-item">
+                <span class="legend-color" style="background-color: #6366F1;"></span>
+                30天总消耗:
+                <span id="total-token-cost" style="font-weight: 600; color: #1F2937; margin-left: 4px;">--</span>
+              </span>
+            </div>
+          </div>
+
+          <div class="chart-container workbook-table-card">
+            <div class="chart-body token-chart-body">
+              <canvas id="token-cost-chart"></canvas>
+              <div id="token-chart-error" class="chart-error" hidden>获取 Token 消耗数据失败，请稍后重试</div>
+            </div>
+          </div>
+        </section>
 
       </div>
     </main>

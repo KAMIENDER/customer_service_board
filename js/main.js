@@ -1,240 +1,354 @@
 /**
- * AI客服数据看板 - 接待效率页面逻辑
- * P1优先级：辅助售前接待效率
+ * AI客服数据看板 - Excel 版接待效率首页
+ * 按《数据看板需求.xlsx》中的四个类别拆分为 4 个 tab 展示
  */
 
 import { Chart, registerables } from 'chart.js';
 import { MockData } from './mock-data.js';
 import { initAuth } from './auth.js';
-import { getAllNumCached, loadFilterParams, saveFilterParams, getTokenCost } from './api.js';
+import { getAllNumCached, getTokenCost, loadFilterParams, saveFilterParams } from './api.js';
 import '../css/style.css';
 
-// 注册 Chart.js 组件
 Chart.register(...registerables);
 
-// 当前筛选参数
-let currentFilterParams = {
-  interval: 7
-};
-
+let currentFilterParams = { interval: 7 };
+let tokenCostChart = null;
 const savedFilterParams = loadFilterParams();
 if (savedFilterParams) {
   currentFilterParams = savedFilterParams;
 }
 
-// DOM 加载完成后初始化
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', () => {
   initAuth();
-  initReceptionStats();
-  initInquiryStats();
+  initDashboardTabs();
   initDateFilter();
-  initFilterTabs();
+  initActionButtons();
+  refreshData();
   initTokenCostChart();
 });
 
-/**
- * 刷新数据（使用当前筛选参数）
- */
-async function refreshData() {
-  await initReceptionStats(currentFilterParams);
-}
-
-/**
- * 初始化接待效率统计卡片数据（每日统计）
- * @param {Object} params - API 查询参数
- */
-async function initReceptionStats(params = currentFilterParams) {
-  // 显示加载状态
+async function refreshData(params = currentFilterParams) {
   showLoadingState();
 
-  // 从API获取真实数据
+  let apiData = null;
   try {
-    console.log('API 请求参数:', params);
     const response = await getAllNumCached(params);
-    console.log('API 接待总数数据:', response);
-
-    // 检查API返回格式 { code: 0, message: "", data: {...} }
     if (response && response.code === 0 && response.data) {
-      const data = response.data;
-
-      // AI接待人数 = all_num
-      if (data.all_num !== undefined) {
-        document.getElementById('stat-ai-reception').textContent = data.all_num.toLocaleString();
-      }
-
-      // 三句话无响应人数 = 3_question_num
-      if (data['3_question_num'] !== undefined) {
-        document.getElementById('stat-no-response').textContent = data['3_question_num'].toLocaleString();
-      }
-
-      // 转人工人数 = transfer_num
-      if (data.transfer_num !== undefined) {
-        document.getElementById('stat-handover').textContent = data.transfer_num.toLocaleString();
-      }
-
-      // AI转接率 = transfer_num / all_num * 100
-      if (data.transfer_num !== undefined && data.all_num) {
-        const handoverRate = ((data.transfer_num / data.all_num) * 100).toFixed(2);
-        document.getElementById('stat-handover-rate').textContent = handoverRate;
-      }
-
-      // 无法回答转人工人数 = can_not_answer_and_transfer_num
-      if (data.can_not_answer_and_transfer_num !== undefined) {
-        document.getElementById('stat-no-answer-handover').textContent = data.can_not_answer_and_transfer_num.toLocaleString();
-      }
-
-      // 无法回答转接率 = can_not_answer_and_transfer_num / all_num * 100
-      if (data.can_not_answer_and_transfer_num !== undefined && data.all_num) {
-        const noAnswerRate = ((data.can_not_answer_and_transfer_num / data.all_num) * 100).toFixed(2);
-        document.getElementById('stat-no-answer-rate').textContent = noAnswerRate;
-      }
-
-      // 更新询单相关数据
-      updateInquiryStats(data);
-
-      // 计算本周预估节省人力成本
-      // 逻辑：接待人数(all_num) / 200 / 1.2
-      if (data.all_num !== undefined) {
-        const savedHumanCount = Math.ceil(data.all_num / 200 / 1.2);
-        updateSavedHumanCount(savedHumanCount);
-      }
-
-      // 更新问题覆盖统计
-      updateQuestionCoverageStats(data);
-    } else {
-      showErrorState('数据格式错误');
+      apiData = response.data;
     }
   } catch (error) {
-    console.warn('获取API数据失败:', error.message);
-    showErrorState('加载失败');
+    console.warn('获取首页接待效率数据失败，使用默认推导数据:', error?.message || error);
   }
 
-  // 移除加载状态
+  const dashboardData = buildDashboardData(apiData);
+  renderDashboard(dashboardData);
   hideLoadingState();
 }
 
-/**
- * 显示加载状态
- */
+function buildDashboardData(apiData) {
+  const defaults = MockData.dashboardWorkbookDefaults;
+  const assumptions = MockData.dashboardWorkbookAssumptions;
+
+  const aiReceptionCount = clamp(
+    pickNumber(apiData?.all_num, defaults.aiReceptionCount),
+    0
+  );
+  const transferCount = clamp(
+    pickNumber(apiData?.transfer_num, defaults.transferCount),
+    0,
+    aiReceptionCount
+  );
+  const noAnswerTransferCount = clamp(
+    pickNumber(apiData?.can_not_answer_and_transfer_num, defaults.noAnswerTransferCount),
+    0,
+    transferCount
+  );
+  const aiCoverageRateRaw = clamp(
+    pickNumber(apiData?.ai_coverage_rate, defaults.aiCoverageRate),
+    0,
+    1
+  );
+
+  const storeTotalReception = Math.max(
+    aiReceptionCount,
+    Math.round(aiReceptionCount / (aiCoverageRateRaw || defaults.aiCoverageRate || 1))
+  );
+  const autoReceptionCount = Math.max(aiReceptionCount - transferCount, 0);
+  const assistReceptionCount = transferCount;
+
+  const inquiryCount = clamp(
+    pickNumber(apiData?.no_trade_num, defaults.inquiryCount),
+    0,
+    autoReceptionCount
+  );
+  const paymentCount = clamp(
+    pickNumber(apiData?.no_trade_and_success, defaults.paymentCount),
+    0,
+    inquiryCount
+  );
+
+  const shortConversationCount = clamp(
+    pickNumber(apiData?.['3_question_num'], defaults.threeSentenceConversationCount),
+    0,
+    autoReceptionCount
+  );
+  const longConversationCount = Math.max(autoReceptionCount - shortConversationCount, 0);
+
+  let shortInquiryCount = clamp(
+    Math.round(inquiryCount * assumptions.autoShortInquiryShare),
+    0,
+    shortConversationCount
+  );
+  let longInquiryCount = Math.min(
+    longConversationCount,
+    Math.max(inquiryCount - shortInquiryCount, 0)
+  );
+
+  const unresolvedInquiryGap = inquiryCount - shortInquiryCount - longInquiryCount;
+  if (unresolvedInquiryGap > 0) {
+    longInquiryCount = Math.min(longConversationCount, longInquiryCount + unresolvedInquiryGap);
+  }
+
+  const shortPaymentCount = clamp(
+    Math.round(paymentCount * assumptions.autoShortPaymentShare),
+    0,
+    shortInquiryCount
+  );
+  const longPaymentCount = Math.min(
+    longInquiryCount,
+    Math.max(paymentCount - shortPaymentCount, 0)
+  );
+
+  const shortOrderAmount = shortPaymentCount * assumptions.autoShortAverageOrderValue;
+  const longOrderAmount = longPaymentCount * assumptions.autoLongAverageOrderValue;
+
+  const assistInquiryCount = clamp(
+    Math.round(assistReceptionCount * assumptions.assistInquiryRate),
+    0,
+    assistReceptionCount
+  );
+  const assistPaymentCount = clamp(
+    Math.round(assistInquiryCount * assumptions.assistPaymentRate),
+    0,
+    assistInquiryCount
+  );
+  const assistOrderAmount = assistPaymentCount * assumptions.assistAverageOrderValue;
+
+  const remainingTransferCount = Math.max(transferCount - noAnswerTransferCount, 0);
+  const normalFlowCount = Math.round(remainingTransferCount * assumptions.sceneDistribution.normalFlow);
+  const customerDemandCount = Math.round(remainingTransferCount * assumptions.sceneDistribution.customerDemand);
+  const emotionIssueCount = Math.round(remainingTransferCount * assumptions.sceneDistribution.emotionIssue);
+  const afterSalesCount = Math.max(
+    remainingTransferCount - normalFlowCount - customerDemandCount - emotionIssueCount,
+    0
+  );
+
+  return {
+    overview: {
+      storeTotalReception,
+      aiReceptionCount,
+      aiCoverageRate: percentage(aiReceptionCount, storeTotalReception),
+      autoReceptionCount,
+      autoReceptionRate: percentage(autoReceptionCount, aiReceptionCount),
+      assistReceptionCount,
+      assistReceptionRate: percentage(assistReceptionCount, aiReceptionCount)
+    },
+    autoRows: [
+      {
+        label: '用户回话3句话以内会话',
+        receptionCount: shortConversationCount,
+        inquiryCount: shortInquiryCount,
+        paymentCount: shortPaymentCount,
+        orderAmount: shortOrderAmount
+      },
+      {
+        label: '用户回话3句话以上会话',
+        receptionCount: longConversationCount,
+        inquiryCount: longInquiryCount,
+        paymentCount: longPaymentCount,
+        orderAmount: longOrderAmount
+      }
+    ].map(item => ({
+      ...item,
+      conversionRate: percentage(item.paymentCount, item.inquiryCount),
+      averageOrderValue: item.paymentCount > 0 ? item.orderAmount / item.paymentCount : 0
+    })),
+    assist: {
+      receptionCount: assistReceptionCount,
+      inquiryCount: assistInquiryCount,
+      paymentCount: assistPaymentCount,
+      orderAmount: assistOrderAmount,
+      conversionRate: percentage(assistPaymentCount, assistInquiryCount),
+      averageOrderValue: assistPaymentCount > 0 ? assistOrderAmount / assistPaymentCount : 0
+    },
+    scene: {
+      totalTransferCount: transferCount,
+      noAnswerTransferCount,
+      items: [
+        { label: '正常流程转接', count: normalFlowCount },
+        { label: '客户需求转人工', count: customerDemandCount },
+        { label: '无法解答问题转接', count: noAnswerTransferCount },
+        { label: '情绪问题转接', count: emotionIssueCount },
+        { label: '售后类问题转接', count: afterSalesCount }
+      ].map(item => ({
+        ...item,
+        share: percentage(item.count, transferCount)
+      }))
+    }
+  };
+}
+
+function renderDashboard(dashboardData) {
+  renderOverview(dashboardData.overview);
+  renderAutoEfficiencyTable(dashboardData.autoRows);
+  renderAssistStats(dashboardData.assist);
+  renderSceneMatrix(dashboardData.scene);
+}
+
+function renderOverview(overview) {
+  setText('stat-store-total', formatNumber(overview.storeTotalReception));
+  setText('stat-ai-reception', formatNumber(overview.aiReceptionCount));
+  setText('stat-ai-coverage-rate', formatPercent(overview.aiCoverageRate));
+  setText('stat-auto-reception', formatNumber(overview.autoReceptionCount));
+  setText('stat-auto-rate', formatPercent(overview.autoReceptionRate));
+  setText('stat-assist-reception', formatNumber(overview.assistReceptionCount));
+  setText('stat-assist-rate', formatPercent(overview.assistReceptionRate));
+}
+
+function renderAutoEfficiencyTable(rows) {
+  const tbody = document.getElementById('auto-efficiency-table-body');
+  if (!tbody) return;
+
+  tbody.innerHTML = rows.map(row => `
+    <tr>
+      <td>
+        <div class="table-cell-main">${row.label}</div>
+      </td>
+      <td>${formatNumber(row.receptionCount)}</td>
+      <td>${formatNumber(row.inquiryCount)}</td>
+      <td>${formatNumber(row.paymentCount)}</td>
+      <td>${formatCurrency(row.orderAmount)}</td>
+      <td>${formatPercent(row.conversionRate)}%</td>
+      <td>${formatCurrency(row.averageOrderValue)}</td>
+    </tr>
+  `).join('');
+}
+
+function renderAssistStats(assist) {
+  setText('assist-stat-reception', formatNumber(assist.receptionCount));
+  setText('assist-stat-inquiry', formatNumber(assist.inquiryCount));
+  setText('assist-stat-order-count', formatNumber(assist.paymentCount));
+  setText('assist-stat-order-amount', formatCurrency(assist.orderAmount));
+  setText('assist-stat-conversion-rate', formatPercent(assist.conversionRate));
+  setText('assist-stat-aov', formatCurrency(assist.averageOrderValue));
+}
+
+function renderSceneMatrix(scene) {
+  setText('scene-total-transfer', formatNumber(scene.totalTransferCount));
+  setText('scene-no-answer-transfer', formatNumber(scene.noAnswerTransferCount));
+
+  const headerRow = document.getElementById('scene-header-row');
+  const countRow = document.getElementById('scene-count-row');
+  const shareRow = document.getElementById('scene-share-row');
+  if (!headerRow || !countRow || !shareRow) return;
+
+  headerRow.innerHTML = `
+    <th>场景</th>
+    ${scene.items.map(item => `<th>${item.label}</th>`).join('')}
+  `;
+
+  countRow.innerHTML = `
+    <td class="matrix-row-label">人数</td>
+    ${scene.items.map(item => `<td>${formatNumber(item.count)}</td>`).join('')}
+  `;
+
+  shareRow.innerHTML = `
+    <td class="matrix-row-label">占比（统计整体）</td>
+    ${scene.items.map(item => `<td>${formatPercent(item.share)}%</td>`).join('')}
+  `;
+}
+
 function showLoadingState() {
-  const statIds = [
-    'stat-ai-reception', 'stat-no-response', 'stat-handover',
-    'stat-handover-rate', 'stat-no-answer-handover', 'stat-no-answer-rate',
-    'stat-inquiry-count', 'stat-payment-count', 'stat-conversion'
-  ];
-
-  statIds.forEach(id => {
+  [
+    'stat-store-total',
+    'stat-ai-reception',
+    'stat-ai-coverage-rate',
+    'stat-auto-reception',
+    'stat-auto-rate',
+    'stat-assist-reception',
+    'stat-assist-rate',
+    'assist-stat-reception',
+    'assist-stat-inquiry',
+    'assist-stat-order-count',
+    'assist-stat-order-amount',
+    'assist-stat-conversion-rate',
+    'assist-stat-aov',
+    'scene-total-transfer',
+    'scene-no-answer-transfer'
+  ].forEach(id => {
     const el = document.getElementById(id);
-    if (el) {
-      el.innerHTML = '<span class="loading-spinner"></span>';
-      el.classList.add('loading');
-    }
+    if (!el) return;
+    el.textContent = '--';
+    el.classList.add('loading');
   });
+
+  const autoTbody = document.getElementById('auto-efficiency-table-body');
+  if (autoTbody) {
+    autoTbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#9CA3AF;">加载中...</td></tr>';
+  }
+
+  const headerRow = document.getElementById('scene-header-row');
+  const countRow = document.getElementById('scene-count-row');
+  const shareRow = document.getElementById('scene-share-row');
+  if (headerRow) headerRow.innerHTML = '<th>场景</th><th>加载中...</th>';
+  if (countRow) countRow.innerHTML = '<td class="matrix-row-label">人数</td><td>--</td>';
+  if (shareRow) shareRow.innerHTML = '<td class="matrix-row-label">占比（统计整体）</td><td>--</td>';
 }
 
-/**
- * 隐藏加载状态
- */
 function hideLoadingState() {
-  const statIds = [
-    'stat-ai-reception', 'stat-no-response', 'stat-handover',
-    'stat-handover-rate', 'stat-no-answer-handover', 'stat-no-answer-rate',
-    'stat-inquiry-count', 'stat-payment-count', 'stat-conversion'
-  ];
-  
-  statIds.forEach(id => {
-    const el = document.getElementById(id);
-    if (el) {
-      el.classList.remove('loading');
-    }
+  document.querySelectorAll('.stat-value.loading, .scene-summary-card strong.loading').forEach(el => {
+    el.classList.remove('loading');
   });
 }
 
-/**
- * 显示错误状态
- */
-function showErrorState(msg) {
-  const statIds = [
-    'stat-ai-reception', 'stat-no-response', 'stat-handover',
-    'stat-handover-rate', 'stat-no-answer-handover', 'stat-no-answer-rate',
-    'stat-inquiry-count', 'stat-payment-count', 'stat-conversion'
-  ];
+function initDashboardTabs() {
+  const tabs = document.querySelectorAll('.dashboard-tab');
+  const panels = document.querySelectorAll('.tab-panel');
 
-  statIds.forEach(id => {
-    const el = document.getElementById(id);
-    if (el) {
-      el.textContent = '--';
-    }
+  tabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      const target = tab.dataset.tab;
+
+      tabs.forEach(item => {
+        item.classList.remove('active');
+        item.setAttribute('aria-selected', String(item === tab));
+      });
+
+      panels.forEach(panel => {
+        panel.classList.toggle('active', panel.dataset.tabPanel === target);
+      });
+
+      tab.classList.add('active');
+    });
   });
 }
 
-/**
- * 根据API数据更新询单统计
- */
-function updateInquiryStats(data) {
-  // AI询单人数 = no_trade_num
-  if (data.no_trade_num !== undefined) {
-    document.getElementById('stat-inquiry-count').textContent = data.no_trade_num.toLocaleString();
+function initActionButtons() {
+  const refreshButton = document.getElementById('refresh-dashboard-btn');
+  if (refreshButton) {
+    refreshButton.addEventListener('click', async () => {
+      await Promise.all([refreshData(), initTokenCostChart()]);
+    });
   }
 
-  // 询单支付人数 = no_trade_and_success
-  if (data.no_trade_and_success !== undefined) {
-    document.getElementById('stat-payment-count').textContent = data.no_trade_and_success.toLocaleString();
-  }
-
-  // 询单支付转化率 = no_trade_and_success / no_trade_num * 100
-  if (data.no_trade_and_success !== undefined && data.no_trade_num) {
-    const conversionRate = ((data.no_trade_and_success / data.no_trade_num) * 100).toFixed(2);
-    document.getElementById('stat-conversion').textContent = conversionRate;
+  const exportButton = document.getElementById('export-report-btn');
+  if (exportButton) {
+    exportButton.addEventListener('click', () => {
+      window.print();
+    });
   }
 }
 
-/**
- * 初始化询单统计数据（API数据已由initReceptionStats处理）
- */
-function initInquiryStats() {
-// 询单数据由initReceptionStats中的updateInquiryStats统一处理
-}
-
-/**
- * 数字动画效果
- */
-function animateValue(elementId, start, end, duration) {
-  const element = document.getElementById(elementId);
-  if (!element) return;
-  
-  const range = end - start;
-  const startTime = performance.now();
-  
-  function update(currentTime) {
-    const elapsed = currentTime - startTime;
-    const progress = Math.min(elapsed / duration, 1);
-    
-    // 使用 easeOutQuart 缓动函数
-    const easeProgress = 1 - Math.pow(1 - progress, 4);
-    const current = Math.floor(start + range * easeProgress);
-    
-    element.textContent = current.toLocaleString();
-    
-    if (progress < 1) {
-      requestAnimationFrame(update);
-    }
-  }
-  
-  requestAnimationFrame(update);
-}
-
-/**
- * 初始化接待趋势图表 (已移除)
- */
-function initTrendChart() {
-  // 图表已移除
-}
-
-
-/**
- * 初始化日期筛选器
- */
 function initDateFilter() {
   const dateButtons = document.querySelectorAll('.date-btn:not(.date-custom-btn)');
   const customBtn = document.querySelector('.date-custom-btn');
@@ -243,8 +357,7 @@ function initDateFilter() {
   const confirmBtn = document.getElementById('date-picker-confirm');
   const dateStart = document.getElementById('date-start');
   const dateEnd = document.getElementById('date-end');
-  
-  // 设置默认日期（今天和7天前）
+
   const today = new Date();
   const weekAgo = new Date(today);
   weekAgo.setDate(today.getDate() - 7);
@@ -252,103 +365,139 @@ function initDateFilter() {
   if (dateEnd) dateEnd.value = formatDate(today);
   if (dateStart) dateStart.value = formatDate(weekAgo);
 
-  // 普通日期按钮点击
+  restoreDateFilterState(dateButtons, customBtn, dateStart, dateEnd);
+
   dateButtons.forEach(btn => {
     btn.addEventListener('click', async function () {
-      document.querySelectorAll('.date-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.date-btn').forEach(button => button.classList.remove('active'));
       this.classList.add('active');
-      if (dropdown) dropdown.classList.remove('show');
 
-      // 重置自定义按钮文本
+      if (dropdown) dropdown.classList.remove('show');
       if (customBtn) {
         customBtn.textContent = '自定义';
         customBtn.classList.remove('has-range');
       }
 
-      // 设置 interval 参数并刷新数据
       const range = this.dataset.range;
-
       if (range === 'yesterday') {
-        const today = new Date();
         const yesterday = new Date(today);
         yesterday.setDate(today.getDate() - 1);
-        const yStr = formatDate(yesterday);
-
+        const yesterdayStr = formatDate(yesterday);
         currentFilterParams = {
-          start_time: `${yStr} 00:00:00`,
-          end_time: `${yStr} 23:59:59`
+          start_time: `${yesterdayStr} 00:00:00`,
+          end_time: `${yesterdayStr} 23:59:59`
         };
       } else if (range.endsWith('days')) {
-        // 解析 '7days' -> 7
-        const days = parseInt(range);
-        currentFilterParams = { interval: days };
+        currentFilterParams = { interval: parseInt(range, 10) };
       } else {
-        // 其他情况作为 interval 处理（如纯数字）
         currentFilterParams = { interval: range };
       }
 
       saveFilterParams(currentFilterParams);
-      console.log('日期筛选参数:', currentFilterParams);
       await refreshData();
     });
   });
 
-  // 自定义按钮点击 - 显示/隐藏下拉框
   if (customBtn) {
-    customBtn.addEventListener('click', function (e) {
-      e.stopPropagation();
-      if (dropdown) {
-        dropdown.classList.toggle('show');
-      }
+    customBtn.addEventListener('click', event => {
+      event.stopPropagation();
+      if (dropdown) dropdown.classList.toggle('show');
     });
   }
 
-  // 取消按钮
   if (cancelBtn) {
-    cancelBtn.addEventListener('click', function () {
+    cancelBtn.addEventListener('click', () => {
       if (dropdown) dropdown.classList.remove('show');
     });
   }
 
-  // 确定按钮
   if (confirmBtn) {
-    confirmBtn.addEventListener('click', async function () {
+    confirmBtn.addEventListener('click', async () => {
       const start = dateStart?.value;
       const end = dateEnd?.value;
+      if (!start || !end) return;
 
-      if (start && end) {
-        document.querySelectorAll('.date-btn').forEach(b => b.classList.remove('active'));
-        if (customBtn) {
-          customBtn.classList.add('active', 'has-range');
-          customBtn.textContent = `${formatDisplayDate(start)} - ${formatDisplayDate(end)}`;
-        }
-
-        // 设置 start_time 和 end_time 参数并刷新数据
-        // 格式：YYYY-MM-DD 00:00:00 到 YYYY-MM-DD 23:59:59
-        currentFilterParams = {
-          start_time: `${start} 00:00:00`,
-          end_time: `${end} 23:59:59`
-        };
-        saveFilterParams(currentFilterParams);
-        console.log('自定义日期范围:', currentFilterParams);
-        await refreshData();
+      document.querySelectorAll('.date-btn').forEach(button => button.classList.remove('active'));
+      if (customBtn) {
+        customBtn.classList.add('active', 'has-range');
+        customBtn.textContent = `${formatDisplayDate(start)} - ${formatDisplayDate(end)}`;
       }
+
+      currentFilterParams = {
+        start_time: `${start} 00:00:00`,
+        end_time: `${end} 23:59:59`
+      };
+
+      saveFilterParams(currentFilterParams);
+      await refreshData();
 
       if (dropdown) dropdown.classList.remove('show');
     });
   }
 
-  // 点击外部关闭下拉框
-  document.addEventListener('click', function (e) {
-    if (dropdown && !dropdown.contains(e.target) && !customBtn?.contains(e.target)) {
+  document.addEventListener('click', event => {
+    if (dropdown && !dropdown.contains(event.target) && !customBtn?.contains(event.target)) {
       dropdown.classList.remove('show');
     }
   });
 }
 
-/**
- * 格式化日期为 YYYY-MM-DD
- */
+function restoreDateFilterState(dateButtons, customBtn, dateStart, dateEnd) {
+  if (currentFilterParams?.start_time && currentFilterParams?.end_time) {
+    const start = String(currentFilterParams.start_time).split(' ')[0];
+    const end = String(currentFilterParams.end_time).split(' ')[0];
+    if (dateStart) dateStart.value = start;
+    if (dateEnd) dateEnd.value = end;
+
+    document.querySelectorAll('.date-btn').forEach(button => button.classList.remove('active'));
+    if (customBtn) {
+      customBtn.classList.add('active', 'has-range');
+      customBtn.textContent = `${formatDisplayDate(start)} - ${formatDisplayDate(end)}`;
+    }
+    return;
+  }
+
+  if (typeof currentFilterParams?.interval === 'number') {
+    const activeRange = `${currentFilterParams.interval}days`;
+    const activeButton = Array.from(dateButtons).find(button => button.dataset.range === activeRange);
+    if (activeButton) {
+      document.querySelectorAll('.date-btn').forEach(button => button.classList.remove('active'));
+      activeButton.classList.add('active');
+    }
+  }
+}
+
+function setText(id, value) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = value;
+}
+
+function pickNumber(value, fallback) {
+  return Number.isFinite(Number(value)) ? Number(value) : fallback;
+}
+
+function clamp(value, min = 0, max = Number.POSITIVE_INFINITY) {
+  return Math.min(Math.max(Number(value) || 0, min), max);
+}
+
+function percentage(numerator, denominator) {
+  if (!denominator) return 0;
+  return (numerator / denominator) * 100;
+}
+
+function formatNumber(value) {
+  return Math.round(value).toLocaleString('zh-CN');
+}
+
+function formatPercent(value) {
+  return Number(value).toFixed(2);
+}
+
+function formatCurrency(value) {
+  return `¥${Math.round(value).toLocaleString('zh-CN')}`;
+}
+
 function formatDate(date) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -356,188 +505,129 @@ function formatDate(date) {
   return `${year}-${month}-${day}`;
 }
 
-/**
- * 格式化显示日期为 MM/DD
- */
 function formatDisplayDate(dateStr) {
   const date = new Date(dateStr);
-  const month = date.getMonth() + 1;
-  const day = date.getDate();
-  return `${month}/${day}`;
+  return `${date.getMonth() + 1}/${date.getDate()}`;
 }
 
-/**
- * 初始化筛选标签
- */
-function initFilterTabs() {
-  const filterTabs = document.querySelectorAll('.filter-tab');
-  
-  filterTabs.forEach(tab => {
-    tab.addEventListener('click', function() {
-      filterTabs.forEach(t => t.classList.remove('active'));
-      this.classList.add('active');
-      console.log('筛选:', this.textContent);
-    });
-  });
-}
-
-/**
- * 更新节省人力成本展示
- * @param {number} count - 节省的人力数量
- */
-/**
- * 更新节省人力成本展示
- * @param {number} count - 节省的人力数量
- */
-function updateSavedHumanCount(count) {
-  const container = document.getElementById('human-saved-count');
-  if (!container) return;
-
-  // 直接显示数字，不拆分
-  container.textContent = count;
-}
-
-/**
- * 更新问题覆盖统计
- * @param {Object} data 
- */
-function updateQuestionCoverageStats(data) {
-  // 1. 咨询问题数 (优先使用 all_question_num，其次 question_num)
-  const allQuestions = data.all_question_num !== undefined ? data.all_question_num : data.question_num;
-  if (allQuestions !== undefined) {
-    document.getElementById('stat-all-questions').textContent = allQuestions.toLocaleString();
-  }
-
-  // 2. 已回复问题数
-  const answeredQuestions = data.answer_question_num;
-  if (answeredQuestions !== undefined) {
-    document.getElementById('stat-answered-questions').textContent = answeredQuestions.toLocaleString();
-  }
-
-  // 3. 问题覆盖率
-  if (allQuestions && answeredQuestions !== undefined) {
-    const coverage = ((answeredQuestions / allQuestions) * 100).toFixed(2);
-    document.getElementById('stat-question-coverage').textContent = coverage;
-  }
-}
-
-/**
- * 初始化 Token 消耗折线图
- */
 async function initTokenCostChart() {
   const ctx = document.getElementById('token-cost-chart');
+  const errorEl = document.getElementById('token-chart-error');
+  const totalEl = document.getElementById('total-token-cost');
   if (!ctx) return;
 
+  if (errorEl) {
+    errorEl.hidden = true;
+  }
+  if (totalEl) {
+    totalEl.textContent = '--';
+  }
+
   try {
-    // 1. 准备请求参数（获取 31 天的数据，以便计算 30 天的每日增量）
     const now = new Date();
     const endTimeUnix = now.getTime();
-    const startTimeUnix = endTimeUnix - (31 * 24 * 60 * 60 * 1000); // 多取一天作为基准
+    const startTimeUnix = endTimeUnix - (31 * 24 * 60 * 60 * 1000);
 
-    const params = {
+    const response = await getTokenCost({
       start_time_unix_time: startTimeUnix,
       end_time_unix_time: endTimeUnix
-    };
+    });
 
-    // 2. 获取数据
-    const response = await getTokenCost(params);
-    if (response && response.code === 0 && response.data && response.data.records) {
-      const records = response.data.records;
+    if (!(response && response.code === 0 && response.data && Array.isArray(response.data.records))) {
+      throw new Error('Token 消耗数据格式错误');
+    }
 
-      // 按时间戳排序
-      records.sort((a, b) => a.unix_timestamp - b.unix_timestamp);
+    const records = [...response.data.records].sort((a, b) => a.unix_timestamp - b.unix_timestamp);
+    const dailyCosts = [];
+    const labels = [];
 
-      // 处理数据为折线图格式
-      // 注意：如果 records 返回的是累计值，我们需要计算每日消耗
-      // 根据用户描述，"每月每天的消耗 token 量"，通常 records里应该包含了点位
+    for (let i = 1; i < records.length; i++) {
+      const current = records[i];
+      const previous = records[i - 1];
+      dailyCosts.push(Math.max(0, current.token_cost - previous.token_cost));
 
-      // 计算每日消耗增量
-      const dailyCosts = [];
-      const labels = [];
+      const date = new Date(current.unix_timestamp);
+      labels.push(`${date.getMonth() + 1}/${date.getDate()}`);
+    }
 
-      for (let i = 1; i < records.length; i++) {
-        const current = records[i];
-        const previous = records[i - 1];
+    const chartData = dailyCosts.length > 0 ? dailyCosts : records.map(item => item.token_cost);
+    const chartLabels = labels.length > 0
+      ? labels
+      : records.map(item => {
+          const date = new Date(item.unix_timestamp);
+          return `${date.getMonth() + 1}/${date.getDate()}`;
+        });
 
-        // 每日消耗 = 当前累计值 - 前一刻累计值
-        const dailyDiff = Math.max(0, current.token_cost - previous.token_cost);
-        dailyCosts.push(dailyDiff);
+    const totalCost = dailyCosts.length > 0
+      ? records[records.length - 1].token_cost - records[0].token_cost
+      : chartData.reduce((sum, value) => sum + value, 0);
 
-        const d = new Date(current.unix_timestamp);
-        labels.push(`${d.getMonth() + 1}/${d.getDate()}`);
-      }
+    if (totalEl) {
+      totalEl.textContent = Math.max(0, totalCost).toLocaleString('zh-CN');
+    }
 
-      // 如果数据不足两点，无法计算差值，则使用原始数据
-      const chartData = dailyCosts.length > 0 ? dailyCosts : records.map(r => r.token_cost);
-      const chartLabels = labels.length > 0 ? labels : records.map(r => {
-        const d = new Date(r.unix_timestamp);
-        return `${d.getMonth() + 1}/${d.getDate()}`;
-      });
+    if (tokenCostChart) {
+      tokenCostChart.destroy();
+    }
 
-      // 计算总消耗
-      const totalCost = dailyCosts.length > 0 ?
-        (records[records.length - 1].token_cost - records[0].token_cost) :
-        chartData.reduce((a, b) => a + b, 0);
-
-      document.getElementById('total-token-cost').textContent = Math.max(0, totalCost).toLocaleString();
-
-      // 3. 渲染图表
-      new Chart(ctx, {
-        type: 'line',
-        data: {
-          labels: chartLabels,
-          datasets: [{
-            label: 'Token 消耗量',
-            data: chartData,
-            fill: true,
-            borderColor: '#6366F1',
-            backgroundColor: 'rgba(99, 102, 241, 0.1)',
-            tension: 0.4,
-            pointRadius: 3,
-            pointBackgroundColor: '#6366F1',
-            borderWidth: 2
-          }]
+    tokenCostChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: chartLabels,
+        datasets: [{
+          label: 'Token 消耗量',
+          data: chartData,
+          fill: true,
+          borderColor: '#6366F1',
+          backgroundColor: 'rgba(99, 102, 241, 0.1)',
+          tension: 0.4,
+          pointRadius: 3,
+          pointBackgroundColor: '#6366F1',
+          borderWidth: 2
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            display: false
+          },
+          tooltip: {
+            mode: 'index',
+            intersect: false
+          }
         },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: {
-              display: false
+        scales: {
+          y: {
+            beginAtZero: true,
+            grid: {
+              color: 'rgba(0, 0, 0, 0.05)'
             },
-            tooltip: {
-              mode: 'index',
-              intersect: false,
+            ticks: {
+              callback(value) {
+                if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M`;
+                if (value >= 1000) return `${(value / 1000).toFixed(1)}k`;
+                return value;
+              }
             }
           },
-          scales: {
-            y: {
-              beginAtZero: true,
-              grid: {
-                color: 'rgba(0, 0, 0, 0.05)'
-              },
-              ticks: {
-                callback: function (value) {
-                  if (value >= 1000000) return (value / 1000000).toFixed(1) + 'M';
-                  if (value >= 1000) return (value / 1000).toFixed(1) + 'k';
-                  return value;
-                }
-              }
-            },
-            x: {
-              grid: {
-                display: false
-              }
+          x: {
+            grid: {
+              display: false
             }
           }
         }
-      });
-    }
+      }
+    });
   } catch (error) {
     console.error('初始化 Token 消耗图表失败:', error);
-    const container = ctx.parentElement;
-    if (container) {
-      container.innerHTML = '<div class="chart-error">获取数据失败，请重试</div>';
+    if (tokenCostChart) {
+      tokenCostChart.destroy();
+      tokenCostChart = null;
+    }
+    if (errorEl) {
+      errorEl.hidden = false;
     }
   }
 }

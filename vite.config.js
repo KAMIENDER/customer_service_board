@@ -32,7 +32,9 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: './index.html',
-        coverage: './coverage.html'
+        coverage: './coverage.html',
+        handover: './handover.html',
+        knowledgeBase: './knowledge-base.html'
       },
       output: {
         chunkFileNames: 'assets/js/[name]-[hash].js',

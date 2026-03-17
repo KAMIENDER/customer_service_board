@@ -89,6 +89,34 @@ export const MockData = {
     humanHandover: [180, 210, 250, 190, 220, 280, 240]
   },
 
+  // Excel 版看板默认值（用于首页 4 个 tab 的推导展示）
+  dashboardWorkbookDefaults: {
+    storeTotalReception: 10000,
+    aiReceptionCount: 9000,
+    aiCoverageRate: 0.9,
+    transferCount: 1800,
+    noAnswerTransferCount: 620,
+    threeSentenceConversationCount: 260,
+    inquiryCount: 2100,
+    paymentCount: 360
+  },
+
+  dashboardWorkbookAssumptions: {
+    autoShortInquiryShare: 0.2,
+    autoShortPaymentShare: 0.12,
+    autoShortAverageOrderValue: 158,
+    autoLongAverageOrderValue: 236,
+    assistInquiryRate: 0.44,
+    assistPaymentRate: 0.21,
+    assistAverageOrderValue: 288,
+    sceneDistribution: {
+      normalFlow: 0.3,
+      customerDemand: 0.26,
+      emotionIssue: 0.16,
+      afterSales: 0.28
+    }
+  },
+
   // ========================================
   // 第二个Tab：售前接待问题覆盖及调教 (P1)
   // ========================================
@@ -125,6 +153,94 @@ export const MockData = {
     answered: [5800, 6200, 6500, 5900, 6400, 7000, 6500],
     unanswered: [700, 800, 650, 750, 600, 550, 600]
   },
+
+  unansweredDetailBoard: {
+    summaryDistribution: {
+      presaleConsultShare: 0.68,
+      presaleAnsweredShare: 0.7
+    },
+    generalQuestionTemplates: [
+      { key: 'logistics', label: '物流相关', subLabel: '催发货', consultShare: 0.34, unansweredShare: 0.32 },
+      { key: 'shipping', label: '发货相关', subLabel: '发货时效', consultShare: 0.27, unansweredShare: 0.24 },
+      { key: 'image', label: '发送图片', subLabel: '图片识别', consultShare: 0.18, unansweredShare: 0.2 },
+      { key: 'general-other', label: '其他', subLabel: '通用咨询', consultShare: 0.21, unansweredShare: 0.24 }
+    ],
+    productQuestionTemplates: [
+      { key: 'oil-usage', label: '卷卷精油', subLabel: '用法', consultShare: 0.24, unansweredShare: 0.21 },
+      { key: 'mask-color', label: '固色发膜', subLabel: '适用发质', consultShare: 0.21, unansweredShare: 0.19 },
+      { key: 'shampoo-color', label: '固色洗发水', subLabel: '使用频率', consultShare: 0.2, unansweredShare: 0.18 },
+      { key: 'mask-no1', label: '1号发膜', subLabel: '搭配使用', consultShare: 0.17, unansweredShare: 0.16 },
+      { key: 'product-other', label: '其他', subLabel: '商品咨询', consultShare: 0.18, unansweredShare: 0.26 }
+    ],
+    detailSamples: {
+      logistics: [
+        { buyerNick: 'huahua88', sellerNick: '旗舰店客服', issue: '物流催发货咨询未命中', question: '为什么我的订单还没发货？', createdAt: '2026-03-15 14:20', conversationId: 'mock-logistics-001' },
+        { buyerNick: 'bluecat', sellerNick: '旗舰店客服', issue: '发货节点解释不完整', question: '今天能帮我安排发出吗？', createdAt: '2026-03-15 10:44', conversationId: 'mock-logistics-002' },
+        { buyerNick: 'qinqin', sellerNick: '旗舰店客服', issue: '物流状态追问', question: '仓库打单后多久会揽收？', createdAt: '2026-03-14 19:02', conversationId: 'mock-logistics-003' }
+      ],
+      shipping: [
+        { buyerNick: 'hikari', sellerNick: '旗舰店客服', issue: '发货时效说明缺失', question: '现在拍什么时候能发？', createdAt: '2026-03-15 13:16', conversationId: 'mock-shipping-001' },
+        { buyerNick: 'momo_q', sellerNick: '旗舰店客服', issue: '节假日发货规则未覆盖', question: '周末还会发货吗？', createdAt: '2026-03-14 18:15', conversationId: 'mock-shipping-002' }
+      ],
+      image: [
+        { buyerNick: 'jojo77', sellerNick: '旗舰店客服', issue: '图片识别流程中断', question: '我给你发图了，怎么没回复？', createdAt: '2026-03-15 21:32', conversationId: 'mock-image-001' },
+        { buyerNick: 'linda88', sellerNick: '旗舰店客服', issue: '图片内容解析失败', question: '这张头发图片适合哪个产品？', createdAt: '2026-03-14 11:28', conversationId: 'mock-image-002' }
+      ],
+      'general-other': [
+        { buyerNick: 'summer-x', sellerNick: '旗舰店客服', issue: '通用问题未匹配', question: '可以顺丰到付吗？', createdAt: '2026-03-13 16:49', conversationId: 'mock-general-001' },
+        { buyerNick: 'tata', sellerNick: '旗舰店客服', issue: '政策类问题未命中', question: '会员折扣怎么用？', createdAt: '2026-03-13 09:24', conversationId: 'mock-general-002' }
+      ],
+      'oil-usage': [
+        { buyerNick: 'fafa77', sellerNick: '旗舰店客服', issue: '商品用法未覆盖', question: '卷卷精油是湿发用还是干发用？', createdAt: '2026-03-15 15:17', conversationId: 'mock-oil-001' },
+        { buyerNick: 'Nora', sellerNick: '旗舰店客服', issue: '剂量说明不完整', question: '一次按几泵比较合适？', createdAt: '2026-03-14 20:35', conversationId: 'mock-oil-002' }
+      ],
+      'mask-color': [
+        { buyerNick: 'iris02', sellerNick: '旗舰店客服', issue: '适用发质未命中', question: '固色发膜适合漂过的头发吗？', createdAt: '2026-03-14 17:11', conversationId: 'mock-mask-001' }
+      ],
+      'shampoo-color': [
+        { buyerNick: 'dudu', sellerNick: '旗舰店客服', issue: '使用频率未命中', question: '固色洗发水一周用几次？', createdAt: '2026-03-15 09:58', conversationId: 'mock-shampoo-001' }
+      ],
+      'mask-no1': [
+        { buyerNick: 'alice_h', sellerNick: '旗舰店客服', issue: '搭配使用场景缺失', question: '1号发膜和护发精油先用哪个？', createdAt: '2026-03-13 20:10', conversationId: 'mock-no1-001' }
+      ],
+      'product-other': [
+        { buyerNick: 'flora', sellerNick: '旗舰店客服', issue: '商品咨询泛化未命中', question: '有没有适合孕妇用的染护产品？', createdAt: '2026-03-15 12:06', conversationId: 'mock-product-001' },
+        { buyerNick: 'binbin', sellerNick: '旗舰店客服', issue: '组合推荐未覆盖', question: '我想同时买洗发水和发膜有推荐吗？', createdAt: '2026-03-12 14:41', conversationId: 'mock-product-002' }
+      ]
+    }
+  },
+
+  // 转人工场景关注维度（用于首页看板）
+  handoverSceneStats: [
+    {
+      id: 1,
+      name: '态度问题',
+      transferCount: 308,
+      description: '用户对回复语气不满意后转人工',
+      status: 'warning'
+    },
+    {
+      id: 2,
+      name: '用户拒绝发图',
+      transferCount: 196,
+      description: '需图像信息但用户不愿补充图片',
+      status: 'danger'
+    },
+    {
+      id: 3,
+      name: '物流-售后问题',
+      transferCount: 552,
+      description: '物流异常、退款进度、售后追踪类咨询',
+      status: 'info'
+    },
+    {
+      id: 4,
+      name: '知识库问答-找不到知识',
+      transferCount: 456,
+      description: '知识库未命中有效答案后转人工',
+      status: 'danger'
+    }
+  ],
 
   // 问题场景分类列表（用于话术优化）
   categoryList: [

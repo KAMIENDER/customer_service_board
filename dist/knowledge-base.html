@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="AI客服数据看板 - 知识库管理">
+  <title>AI客服数据看板 - 知识库管理</title>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- Custom Styles -->
+  <script type="module" crossorigin src="/assets/js/knowledgeBase-AkmDM6tC.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/js/auth-BTmkCpS1.js">
+  <link rel="stylesheet" crossorigin href="/assets/css/auth-C8AJPu-X.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- 侧边栏 -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <div class="sidebar-logo">🤖</div>
+        <h1 class="sidebar-title">AI 客服中心</h1>
+      </div>
+
+      <nav class="sidebar-nav">
+        <div class="nav-section">
+          <a href="index.html" class="nav-item">
+            <span class="nav-item-icon">📊</span>
+            <span>接待效率</span>
+          </a>
+          <a href="handover.html" class="nav-item">
+            <span class="nav-item-icon">🎯</span>
+            <span>转人工维度</span>
+          </a>
+          <a href="coverage.html" class="nav-item">
+            <span class="nav-item-icon">💬</span>
+            <span>回复内容</span>
+          </a>
+        </div>
+
+        <div class="nav-section">
+          <div class="nav-section-title">配置管理</div>
+          <a href="knowledge-base.html" class="nav-item active">
+            <span class="nav-item-icon">📚</span>
+            <span>知识库管理</span>
+          </a>
+          <a href="#" class="nav-item">
+            <span class="nav-item-icon">⚙️</span>
+            <span>规则引擎</span>
+          </a>
+          <a href="#" class="nav-item">
+            <span class="nav-item-icon">📜</span>
+            <span>训练历史</span>
+          </a>
+        </div>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="user-info">
+          <div class="user-avatar">李</div>
+          <div class="user-details">
+            <div class="user-name">李明</div>
+            <div class="user-role">管理员</div>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- 主内容区 -->
+    <main class="main-content">
+      <header class="top-header">
+        <div class="breadcrumb">
+          <a href="index.html" class="breadcrumb-item">首页</a>
+          <span class="breadcrumb-separator">/</span>
+          <span class="breadcrumb-current">知识库管理</span>
+        </div>
+
+        <div class="header-actions">
+          <button class="btn-primary" id="kb-refresh-btn">
+            <span>🔄</span>
+            刷新数据
+          </button>
+        </div>
+      </header>
+
+      <div class="page-content">
+        <div class="page-header">
+          <h2 class="page-title">知识库文件管理</h2>
+          <p class="page-subtitle">统一查看当前知识文件与上传队列，页面仅展示业务可用的文件信息</p>
+        </div>
+
+        <div class="stats-grid" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 24px;">
+          <div class="stat-card blue">
+            <div class="stat-header">
+              <div class="stat-icon blue">📄</div>
+            </div>
+            <div class="stat-label">文件总数</div>
+            <div class="stat-value" id="kb-total-count">0</div>
+          </div>
+          <div class="stat-card green">
+            <div class="stat-header">
+              <div class="stat-icon green">✍️</div>
+            </div>
+            <div class="stat-label">Excel 文件数</div>
+            <div class="stat-value" id="kb-excel-count">0</div>
+          </div>
+          <div class="stat-card orange">
+            <div class="stat-header">
+              <div class="stat-icon orange">📎</div>
+            </div>
+            <div class="stat-label">文件 Token 总量</div>
+            <div class="stat-value" id="kb-token-count">0</div>
+          </div>
+        </div>
+
+        <div class="kb-layout">
+          <section class="chart-container kb-card">
+            <div class="chart-header">
+              <h3 class="chart-title">文件上传队列</h3>
+            </div>
+            <div class="kb-upload-panel">
+              <input id="kb-file-input" type="file" class="kb-file-input" multiple>
+              <button type="button" id="kb-upload-trigger" class="kb-dropzone">
+                <span class="kb-dropzone-title">点击选择文件</span>
+                <span class="kb-dropzone-subtitle">支持 PDF / DOC / DOCX / TXT / MD / XLS / XLSX / CSV，可直接提交导入</span>
+              </button>
+              <div class="kb-upload-list" id="kb-upload-list"></div>
+              <div class="kb-actions">
+                <button type="button" id="kb-upload-submit" class="btn-primary">提交上传</button>
+                <button type="button" id="kb-upload-clear" class="btn-outline">清空队列</button>
+              </div>
+              <p class="kb-helper-text" id="kb-upload-feedback"></p>
+            </div>
+          </section>
+        </div>
+
+        <div class="table-container">
+          <div class="table-header">
+            <div>
+              <h3 class="table-title">知识库文件列表</h3>
+              <p class="table-subtitle">当前统一展示知识文件，不展示底层实现信息</p>
+            </div>
+            <div class="filter-tabs" id="kb-filter-tabs">
+              <button class="filter-tab active" data-filter="all">全部</button>
+              <button class="filter-tab" data-filter="excel">Excel</button>
+              <button class="filter-tab" data-filter="other">其他</button>
+            </div>
+          </div>
+          <div class="table-scroll">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>文件名</th>
+                  <th>类型</th>
+                  <th>大小</th>
+                  <th>Tokens</th>
+                  <th>切片数</th>
+                  <th>更新时间</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="kb-records-body">
+                <!-- 动态渲染 -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- 认证模态框 -->
+  <div id="auth-modal" class="auth-modal">
+    <div class="auth-modal-content" style="position: relative;">
+      <div class="auth-modal-header">
+        <button class="auth-modal-close">✕</button>
+        <div class="auth-modal-logo">🤖</div>
+        <h2 class="auth-modal-title">欢迎使用 AI 客服中心</h2>
+        <p class="auth-modal-subtitle">登录以访问完整功能</p>
+      </div>
+
+      <div class="auth-modal-body">
+        <form id="login-form" class="auth-form">
+          <div class="form-group">
+            <label class="form-label">邮箱</label>
+            <input type="email" id="login-email" class="form-input" placeholder="请输入邮箱" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">密码</label>
+            <input type="password" id="login-password" class="form-input" placeholder="请输入密码" required>
+          </div>
+          <div id="auth-error" class="auth-error"></div>
+          <button type="submit" class="auth-submit-btn">登录</button>
+          <div class="auth-switch">
+            还没有账号？<a id="switch-to-register">立即注册</a>
+          </div>
+        </form>
+
+        <form id="register-form" class="auth-form" style="display: none;">
+          <div class="form-group">
+            <label class="form-label">邮箱</label>
+            <input type="email" id="register-email" class="form-input" placeholder="请输入邮箱" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">密码</label>
+            <input type="password" id="register-password" class="form-input" placeholder="请输入密码（至少6位）" required minlength="6">
+          </div>
+          <div class="form-group">
+            <label class="form-label">确认密码</label>
+            <input type="password" id="register-confirm-password" class="form-input" placeholder="请再次输入密码" required>
+          </div>
+          <div id="auth-error" class="auth-error"></div>
+          <button type="submit" class="auth-submit-btn">注册</button>
+          <div class="auth-switch">
+            已有账号？<a id="switch-to-login">立即登录</a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>
