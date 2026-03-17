@@ -245,6 +245,186 @@ app.post('/api/files/info', asyncHandler(async (req, res) => {
     getCredentials()
   );
 
+  const processStatus = Number(data?.data?.status?.process_status);
+  if (processStatus === 0 || processStatus === 1) {
+    await cleanupUploadedPublicFile(data?.data?.url);
+  }
+
+  res.json({ ok: true, data });
+}));
+
+app.post('/api/chunks/list', asyncHandler(async (req, res) => {
+  const collectionName = String(req.body?.collection_name || '').trim();
+  const resourceId = String(req.body?.resource_id || '').trim();
+  const inputProject = String(req.body?.project || '').trim();
+  const docId = String(req.body?.doc_id || '').trim();
+  const region = String(req.body?.region || config.region);
+
+  if (!docId) {
+    throw createHttpError(400, 'doc_id 不能为空');
+  }
+
+  const target = resolveKnowledgeBaseTarget({
+    collectionName,
+    resourceId,
+    project: inputProject
+  });
+
+  const payload = {
+    doc_ids: [docId]
+  };
+
+  if (target.collectionName) {
+    payload.collection_name = target.collectionName;
+    payload.project = target.project;
+  }
+
+  if (target.resourceId) {
+    payload.resource_id = target.resourceId;
+  }
+
+  if (req.body?.offset !== undefined) {
+    payload.offset = Number(req.body.offset);
+  }
+
+  if (req.body?.limit !== undefined) {
+    payload.limit = Number(req.body.limit);
+  }
+
+  if (req.body?.pipeline_name !== undefined) {
+    payload.pipeline_name = String(req.body.pipeline_name || '');
+  }
+
+  const data = await requestVolcOpenApi(
+    {
+      pathname: '/api/knowledge/point/list',
+      method: 'POST',
+      region,
+      service: 'air',
+      baseUrl: config.knowledgeBaseUrl,
+      body: JSON.stringify(payload)
+    },
+    getCredentials()
+  );
+
+  res.json({ ok: true, data });
+}));
+
+app.post('/api/chunks/info', asyncHandler(async (req, res) => {
+  const collectionName = String(req.body?.collection_name || '').trim();
+  const resourceId = String(req.body?.resource_id || '').trim();
+  const inputProject = String(req.body?.project || '').trim();
+  const pointId = String(req.body?.point_id || '').trim();
+  const region = String(req.body?.region || config.region);
+
+  if (!pointId) {
+    throw createHttpError(400, 'point_id 不能为空');
+  }
+
+  const target = resolveKnowledgeBaseTarget({
+    collectionName,
+    resourceId,
+    project: inputProject
+  });
+
+  const payload = {
+    point_id: pointId
+  };
+
+  if (target.collectionName) {
+    payload.collection_name = target.collectionName;
+    payload.project = target.project;
+  }
+
+  if (target.resourceId) {
+    payload.resource_id = target.resourceId;
+  }
+
+  if (req.body?.pipeline_name !== undefined) {
+    payload.pipeline_name = String(req.body.pipeline_name || '');
+  }
+
+  if (req.body?.get_attachment_link !== undefined) {
+    payload.get_attachment_link = Boolean(req.body.get_attachment_link);
+  }
+
+  const data = await requestVolcOpenApi(
+    {
+      pathname: '/api/knowledge/point/info',
+      method: 'POST',
+      region,
+      service: 'air',
+      baseUrl: config.knowledgeBaseUrl,
+      body: JSON.stringify(payload)
+    },
+    getCredentials()
+  );
+
+  res.json({ ok: true, data });
+}));
+
+app.post('/api/chunks/update', asyncHandler(async (req, res) => {
+  const collectionName = String(req.body?.collection_name || '').trim();
+  const resourceId = String(req.body?.resource_id || '').trim();
+  const inputProject = String(req.body?.project || '').trim();
+  const pointId = String(req.body?.point_id || '').trim();
+  const region = String(req.body?.region || config.region);
+
+  if (!pointId) {
+    throw createHttpError(400, 'point_id 不能为空');
+  }
+
+  const target = resolveKnowledgeBaseTarget({
+    collectionName,
+    resourceId,
+    project: inputProject
+  });
+
+  const payload = {
+    point_id: pointId
+  };
+
+  if (target.collectionName) {
+    payload.collection_name = target.collectionName;
+    payload.project = target.project;
+  }
+
+  if (target.resourceId) {
+    payload.resource_id = target.resourceId;
+  }
+
+  if (req.body?.pipeline_name !== undefined) {
+    payload.pipeline_name = String(req.body.pipeline_name || '');
+  }
+
+  if (req.body?.content !== undefined) {
+    payload.content = String(req.body.content || '');
+  }
+
+  if (req.body?.chunk_title !== undefined) {
+    payload.chunk_title = String(req.body.chunk_title || '');
+  }
+
+  if (req.body?.question !== undefined) {
+    payload.question = String(req.body.question || '');
+  }
+
+  if (req.body?.fields !== undefined) {
+    payload.fields = req.body.fields;
+  }
+
+  const data = await requestVolcOpenApi(
+    {
+      pathname: '/api/knowledge/point/update',
+      method: 'POST',
+      region,
+      service: 'air',
+      baseUrl: config.knowledgeBaseUrl,
+      body: JSON.stringify(payload)
+    },
+    getCredentials()
+  );
+
   res.json({ ok: true, data });
 }));
 
@@ -334,6 +514,38 @@ app.post('/api/files/delete', asyncHandler(async (req, res) => {
   await cleanupUploadedPublicFile(uploadUrl);
 
   res.json({ ok: true, data });
+}));
+
+app.post('/api/files/download-link', asyncHandler(async (req, res) => {
+  const url = await resolveKnowledgeDownloadUrl({
+    docId: String(req.body?.doc_id || '').trim(),
+    collectionName: String(req.body?.collection_name || '').trim(),
+    resourceId: String(req.body?.resource_id || '').trim(),
+    project: String(req.body?.project || '').trim(),
+    pipelineName: String(req.body?.pipeline_name || '').trim(),
+    region: String(req.body?.region || config.region)
+  });
+
+  res.json({
+    ok: true,
+    data: {
+      download_url: url
+    }
+  });
+}));
+
+app.get('/api/files/download/:docId', asyncHandler(async (req, res) => {
+  const url = await resolveKnowledgeDownloadUrl({
+    docId: String(req.params.docId || '').trim(),
+    collectionName: String(req.query?.collection_name || '').trim(),
+    resourceId: String(req.query?.resource_id || '').trim(),
+    project: String(req.query?.project || '').trim(),
+    pipelineName: String(req.query?.pipeline_name || '').trim(),
+    region: String(req.query?.region || config.region)
+  });
+
+  res.setHeader('Cache-Control', 'no-store');
+  res.redirect(302, url);
 }));
 
 app.post('/api/files/upload', upload.array('files'), asyncHandler(async (req, res) => {
@@ -652,6 +864,183 @@ function resolveStoredNameFromPublicUrl(fileUrl) {
   }
 }
 
+async function waitForKnowledgeDownloadTask({ taskId, pipelineName = '', region = config.region }) {
+  const timeoutMs = 60_000;
+  const intervalMs = 2_000;
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() <= deadline) {
+    const payload = { task_id: taskId };
+    if (pipelineName) {
+      payload.pipeline_name = pipelineName;
+    }
+
+    const data = await requestVolcOpenApi(
+      {
+        pathname: '/api/knowledge/task/info',
+        method: 'POST',
+        region,
+        service: 'air',
+        baseUrl: config.knowledgeBaseUrl,
+        body: JSON.stringify(payload)
+      },
+      getCredentials()
+    );
+
+    const taskInfo = data?.data || {};
+    const status = String(taskInfo?.status || '').trim().toLowerCase();
+    if (status === 'success') {
+      return taskInfo;
+    }
+
+    if (status === 'fail') {
+      throw createHttpError(502, '火山知识库生成下载文件失败');
+    }
+
+    await sleep(intervalMs);
+  }
+
+  throw createHttpError(504, '等待火山知识库生成下载文件超时');
+}
+
+async function resolveDownloadFallbackUrl({ docId, target, pipelineName = '', region = config.region }) {
+  const payload = {
+    doc_id: docId
+  };
+
+  if (target.collectionName) {
+    payload.collection_name = target.collectionName;
+    payload.project = target.project;
+  }
+
+  if (target.resourceId) {
+    payload.resource_id = target.resourceId;
+  }
+
+  if (pipelineName) {
+    payload.pipeline_name = pipelineName;
+  }
+
+  try {
+    const infoData = await requestVolcOpenApi(
+      {
+        pathname: '/api/knowledge/doc/info',
+        method: 'POST',
+        region,
+        service: 'air',
+        baseUrl: config.knowledgeBaseUrl,
+        body: JSON.stringify(payload)
+      },
+      getCredentials()
+    );
+
+    const url = String(infoData?.data?.url || '').trim();
+    if (!url) {
+      return '';
+    }
+
+    return await isRemoteFileReachable(url) ? url : '';
+  } catch {
+    return '';
+  }
+}
+
+async function resolveKnowledgeDownloadUrl({
+  docId,
+  collectionName = '',
+  resourceId = '',
+  project = '',
+  pipelineName = '',
+  region = config.region
+}) {
+  if (!docId) {
+    throw createHttpError(400, 'doc_id 不能为空');
+  }
+
+  const target = resolveKnowledgeBaseTarget({
+    collectionName,
+    resourceId,
+    project
+  });
+
+  const downloadPayload = {
+    doc_id: docId
+  };
+
+  if (target.collectionName) {
+    downloadPayload.collection_name = target.collectionName;
+    downloadPayload.project = target.project;
+  }
+
+  if (target.resourceId) {
+    downloadPayload.resource_id = target.resourceId;
+  }
+
+  if (pipelineName) {
+    downloadPayload.pipeline_name = pipelineName;
+  }
+
+  try {
+    const taskResponse = await requestVolcOpenApi(
+      {
+        pathname: '/api/knowledge/task/download',
+        method: 'POST',
+        region,
+        service: 'air',
+        baseUrl: config.knowledgeBaseUrl,
+        body: JSON.stringify(downloadPayload)
+      },
+      getCredentials()
+    );
+
+    const taskId = String(taskResponse?.data?.task_id || '').trim();
+    if (!taskId) {
+      throw createHttpError(502, '火山知识库未返回下载任务 ID');
+    }
+
+    const taskInfo = await waitForKnowledgeDownloadTask({
+      taskId,
+      pipelineName,
+      region
+    });
+
+    const attachmentLink = String(taskInfo?.attachment_link || '').trim();
+    if (!attachmentLink) {
+      throw createHttpError(502, '火山知识库未返回下载链接');
+    }
+
+    return attachmentLink;
+  } catch (error) {
+    const fallbackUrl = await resolveDownloadFallbackUrl({
+      docId,
+      target,
+      pipelineName,
+      region
+    });
+
+    if (fallbackUrl) {
+      return fallbackUrl;
+    }
+
+    throw createHttpError(
+      409,
+      `当前文档暂不支持通过火山下载接口直接导出，且源文件已不可访问：${error.message || '下载失败'}`
+    );
+  }
+}
+
+async function isRemoteFileReachable(url) {
+  try {
+    const response = await fetch(url, {
+      method: 'HEAD',
+      redirect: 'manual'
+    });
+    return response.ok || [301, 302, 303, 307, 308].includes(response.status);
+  } catch {
+    return false;
+  }
+}
+
 function inferUploadDocType(filename) {
   const ext = String(filename || '').split('.').pop()?.toLowerCase() || '';
   return ext || 'txt';
@@ -686,6 +1075,12 @@ function normalizeMethod(value) {
     throw createHttpError(400, `暂不支持的请求方法：${method}`);
   }
   return method;
+}
+
+function sleep(ms) {
+  return new Promise(resolve => {
+    setTimeout(resolve, ms);
+  });
 }
 
 function normalizePathname(value) {

@@ -12,9 +12,9 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
   <!-- Custom Styles -->
-  <script type="module" crossorigin src="/assets/js/knowledgeBase-AkmDM6tC.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/js/auth-BTmkCpS1.js">
-  <link rel="stylesheet" crossorigin href="/assets/css/auth-C8AJPu-X.css">
+  <script type="module" crossorigin src="/assets/js/knowledgeBase-D-5erRpn.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/js/auth-D8aRKfxS.js">
+  <link rel="stylesheet" crossorigin href="/assets/css/auth-DydB8eX2.css">
 </head>
 <body>
   <div class="app-container">
@@ -170,6 +170,60 @@
         </div>
       </div>
     </main>
+  </div>
+
+  <div id="kb-chunk-modal" class="auth-modal">
+    <div class="auth-modal-content kb-chunk-modal-content" style="position: relative;">
+      <div class="unanswered-detail-header kb-chunk-header">
+        <button class="auth-modal-close" id="kb-chunk-close">✕</button>
+        <h2 class="auth-modal-title" id="kb-chunk-modal-title">切片详情</h2>
+        <p class="auth-modal-subtitle" id="kb-chunk-modal-subtitle">可查看当前文档切片内容并直接修改</p>
+      </div>
+
+      <div class="kb-chunk-body">
+        <aside class="kb-chunk-sidebar">
+          <div class="kb-chunk-toolbar">
+            <span class="kb-chunk-toolbar-title">切片列表</span>
+            <button type="button" class="btn-outline" id="kb-chunk-refresh">刷新</button>
+          </div>
+          <div class="kb-chunk-list" id="kb-chunk-list"></div>
+        </aside>
+
+        <section class="kb-chunk-detail" id="kb-chunk-detail-panel">
+          <div class="kb-chunk-form-head">
+            <div class="kb-chunk-form-title">切片内容</div>
+            <div class="kb-chunk-form-meta" id="kb-chunk-meta"></div>
+          </div>
+          <div class="kb-chunk-form-grid">
+            <div class="form-group">
+              <label class="form-label">切片标题</label>
+              <input id="kb-chunk-title" class="form-input" placeholder="如接口返回为空，可按需补充标题">
+            </div>
+            <div class="form-group">
+              <label class="form-label">问题问法</label>
+              <input id="kb-chunk-question" class="form-input" placeholder="可填写该切片关联的问题问法">
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">切片内容</label>
+            <textarea id="kb-chunk-content" class="form-textarea kb-chunk-content" placeholder="请输入需要更新的 chunk 内容"></textarea>
+          </div>
+          <div class="form-group" id="kb-chunk-fields-section">
+            <div class="kb-chunk-fields-head">
+              <label class="form-label">结构化字段</label>
+              <button type="button" class="btn-outline" id="kb-chunk-field-add">新增字段</button>
+            </div>
+            <div class="kb-chunk-fields-list" id="kb-chunk-fields-list"></div>
+            <p class="kb-chunk-fields-tip" id="kb-chunk-fields-tip">当前切片没有结构化字段，可按需新增。</p>
+          </div>
+          <p class="kb-helper-text error" id="kb-chunk-error"></p>
+          <div class="kb-chunk-actions">
+            <button type="button" class="btn-outline" id="kb-chunk-cancel">关闭</button>
+            <button type="button" class="btn-primary" id="kb-chunk-save">保存修改</button>
+          </div>
+        </section>
+      </div>
+    </div>
   </div>
 
   <!-- 认证模态框 -->

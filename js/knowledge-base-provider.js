@@ -28,6 +28,40 @@ export async function getKnowledgeBaseFileInfo(payload = {}) {
   return normalizeFileInfoResponse(data);
 }
 
+export async function listKnowledgeBaseChunks(payload = {}) {
+  const data = await requestProxy('/chunks/list', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(payload)
+  });
+
+  return normalizeChunkListResponse(data);
+}
+
+export async function getKnowledgeBaseChunkInfo(payload = {}) {
+  const data = await requestProxy('/chunks/info', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(payload)
+  });
+
+  return normalizeChunkInfoResponse(data);
+}
+
+export async function updateKnowledgeBaseChunk(payload = {}) {
+  return await requestProxy('/chunks/update', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(payload)
+  });
+}
+
 export async function uploadKnowledgeBaseFiles(files) {
   const formData = new FormData();
   files.forEach(file => formData.append('files', file));
@@ -166,5 +200,21 @@ function normalizeUploadResponse(payload) {
   return {
     successCount: Number(data.success_count || payload?.success_count || 0),
     items: Array.isArray(data.items) ? data.items : []
+  };
+}
+
+function normalizeChunkListResponse(payload) {
+  const data = payload?.data?.data || payload?.data || payload || {};
+  return {
+    totalNum: Number(data.total_num || 0),
+    count: Number(data.count || 0),
+    records: Array.isArray(data.point_list) ? data.point_list : []
+  };
+}
+
+function normalizeChunkInfoResponse(payload) {
+  const data = payload?.data?.data || payload?.data || payload || {};
+  return {
+    record: data.point_info || data.record || data
   };
 }

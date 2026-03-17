@@ -1471,6 +1471,240 @@ button {
   padding: 0;
 }
 
+.kb-action-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.auth-modal-content.kb-chunk-modal-content {
+  width: min(1320px, 96vw);
+  max-width: none;
+  max-height: 86vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.kb-chunk-body {
+  display: grid;
+  grid-template-columns: 360px minmax(0, 1fr);
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  background: #f8fafc;
+}
+
+.kb-chunk-sidebar {
+  border-right: 1px solid var(--border-color);
+  background: #ffffff;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+
+.kb-chunk-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.kb-chunk-toolbar-title,
+.kb-chunk-form-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.kb-chunk-list {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.kb-chunk-item {
+  width: 100%;
+  min-width: 0;
+  text-align: left;
+  border: 1px solid #dbe5f3;
+  border-radius: 14px;
+  background: #ffffff;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: all var(--transition-fast);
+}
+
+.kb-chunk-item:hover {
+  border-color: #93c5fd;
+  background: #f8fbff;
+}
+
+.kb-chunk-item.active {
+  border-color: #4f46e5;
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12);
+  background: #eef2ff;
+}
+
+.kb-chunk-item-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.kb-chunk-item-meta {
+  font-size: 12px;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.kb-chunk-item-preview {
+  font-size: 13px;
+  color: #475569;
+  line-height: 1.6;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+.kb-chunk-empty {
+  border: 1px dashed var(--border-color);
+  border-radius: 12px;
+  padding: 18px;
+  color: var(--text-muted);
+  font-size: 14px;
+  text-align: center;
+}
+
+.kb-chunk-detail {
+  padding: 24px;
+  overflow-y: auto;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.kb-chunk-detail.loading {
+  opacity: 0.65;
+}
+
+.kb-chunk-form-head {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.kb-chunk-form-meta {
+  font-size: 12px;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.kb-chunk-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.form-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 120px;
+  padding: var(--spacing-md);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-base);
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  transition: all var(--transition-fast);
+  outline: none;
+  resize: vertical;
+  font: inherit;
+}
+
+.kb-chunk-detail .form-input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.form-textarea:focus {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+}
+
+.kb-chunk-content {
+  min-height: 260px;
+}
+
+.kb-chunk-fields {
+  min-height: 160px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+}
+
+.kb-chunk-fields-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.kb-chunk-fields-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.kb-chunk-field-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 240px) minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+  padding: 14px;
+  border: 1px solid #dbe5f3;
+  border-radius: 14px;
+  background: #f8fbff;
+}
+
+.kb-chunk-field-name {
+  min-width: 0;
+}
+
+.kb-chunk-field-value {
+  min-width: 0;
+  min-height: 88px;
+}
+
+.kb-chunk-field-remove {
+  white-space: nowrap;
+}
+
+.kb-chunk-fields-tip {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.kb-chunk-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: auto;
+}
+
 #kb-upload-submit:disabled,
 #kb-upload-clear:disabled {
   opacity: 0.6;
@@ -1521,6 +1755,22 @@ button {
   }
 
   .kb-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .kb-chunk-body {
+    grid-template-columns: 1fr;
+  }
+
+  .kb-chunk-sidebar {
+    max-height: 260px;
+  }
+
+  .kb-chunk-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .kb-chunk-field-row {
     grid-template-columns: 1fr;
   }
 }

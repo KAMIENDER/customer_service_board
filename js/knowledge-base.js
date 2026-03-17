@@ -6,9 +6,12 @@
 import { initAuth } from './auth.js';
 import {
   deleteKnowledgeBaseFile,
+  getKnowledgeBaseChunkInfo,
   getKnowledgeBaseFileInfo,
   isKnowledgeBaseProxyEnabled,
+  listKnowledgeBaseChunks,
   listKnowledgeBaseFiles,
+  updateKnowledgeBaseChunk,
   uploadKnowledgeBaseFiles
 } from './knowledge-base-provider.js';
 import '../css/style.css';
@@ -75,6 +78,7 @@ let uploadTasks = [];
 let currentFilter = 'all';
 let isUploading = false;
 let uploadPollTimer = null;
+let chunkModalState = createChunkModalState();
 
 const proxyEnabled = isKnowledgeBaseProxyEnabled();
 
@@ -98,6 +102,17 @@ function bindEvents() {
   const refreshBtn = document.getElementById('kb-refresh-btn');
   const filterTabs = document.getElementById('kb-filter-tabs');
   const tableBody = document.getElementById('kb-records-body');
+  const chunkModal = document.getElementById('kb-chunk-modal');
+  const chunkClose = document.getElementById('kb-chunk-close');
+  const chunkList = document.getElementById('kb-chunk-list');
+  const chunkRefresh = document.getElementById('kb-chunk-refresh');
+  const chunkSave = document.getElementById('kb-chunk-save');
+  const chunkCancel = document.getElementById('kb-chunk-cancel');
+  const chunkContent = document.getElementById('kb-chunk-content');
+  const chunkTitle = document.getElementById('kb-chunk-title');
+  const chunkQuestion = document.getElementById('kb-chunk-question');
+  const chunkFieldsList = document.getElementById('kb-chunk-fields-list');
+  const chunkFieldAdd = document.getElementById('kb-chunk-field-add');
 
   if (uploadTrigger && fileInput) {
     uploadTrigger.addEventListener('click', () => fileInput.click());
@@ -132,6 +147,80 @@ function bindEvents() {
 
   if (tableBody) {
     tableBody.addEventListener('click', handleTableAction);
+  }
+
+  if (chunkModal) {
+    chunkModal.addEventListener('click', event => {
+      if (event.target === chunkModal) {
+        closeChunkModal();
+      }
+    });
+  }
+
+  if (chunkClose) {
+    chunkClose.addEventListener('click', closeChunkModal);
+  }
+
+  if (chunkCancel) {
+    chunkCancel.addEventListener('click', closeChunkModal);
+  }
+
+  if (chunkList) {
+    chunkList.addEventListener('click', event => {
+      const row = event.target.closest('[data-point-id]');
+      if (!row) return;
+      handleChunkSelect(row.dataset.pointId || '');
+    });
+  }
+
+  if (chunkRefresh) {
+    chunkRefresh.addEventListener('click', refreshChunkList);
+  }
+
+  if (chunkSave) {
+    chunkSave.addEventListener('click', handleChunkSave);
+  }
+
+  [chunkContent, chunkTitle, chunkQuestion].forEach(input => {
+    if (!input) return;
+    input.addEventListener('input', () => {
+      if (!chunkModalState.selectedChunk) return;
+      chunkModalState.isDirty = true;
+      if (input.tagName === 'TEXTAREA') {
+        autoResizeTextarea(input);
+      }
+      renderChunkModalHeader();
+    });
+  });
+
+  if (chunkFieldsList) {
+    chunkFieldsList.addEventListener('input', event => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement) || !chunkModalState.selectedChunk) return;
+      chunkModalState.isDirty = true;
+      if (target.tagName === 'TEXTAREA') {
+        autoResizeTextarea(target);
+      }
+      renderChunkModalHeader();
+    });
+
+    chunkFieldsList.addEventListener('click', event => {
+      const removeButton = event.target.closest('[data-field-remove]');
+      if (!removeButton) return;
+      removeButton.closest('.kb-chunk-field-row')?.remove();
+      syncFieldTip();
+      chunkModalState.isDirty = true;
+      renderChunkModalHeader();
+    });
+  }
+
+  if (chunkFieldAdd) {
+    chunkFieldAdd.addEventListener('click', () => {
+      appendChunkFieldRow({ field_name: '', field_value: '' });
+      syncFieldTip();
+      chunkModalState.isDirty = true;
+      renderChunkModalHeader();
+    });
   }
 }
 
@@ -256,7 +345,14 @@ function handleTableAction(event) {
 
   const action = actionBtn.dataset.action;
   const id = actionBtn.dataset.id;
-  if (!id || action !== 'delete') return;
+  if (!id) return;
+
+  if (action === 'chunks') {
+    openChunkModal(id);
+    return;
+  }
+
+  if (action !== 'delete') return;
 
   handleDeleteRecord(id);
 }
@@ -345,10 +441,19 @@ function renderRecordsTable() {
 
 function renderActionCell(item) {
   if (proxyEnabled) {
-    return `<button class="link-text kb-delete-btn" data-action="delete" data-id="${item.doc_id}">删除</button>`;
+    return `
+      <div class="kb-action-group">
+        <button class="link-text kb-chunk-btn" data-action="chunks" data-id="${item.doc_id}">切片详情</button>
+        <button class="link-text kb-delete-btn" data-action="delete" data-id="${item.doc_id}">删除</button>
+      </div>
+    `;
   }
 
-  return `<button class="link-text kb-delete-btn" data-action="delete" data-id="${item.doc_id}">移除</button>`;
+  return `
+    <div class="kb-action-group">
+      <button class="link-text kb-delete-btn" data-action="delete" data-id="${item.doc_id}">移除</button>
+    </div>
+  `;
 }
 
 function filterRecords(items, filter) {
@@ -401,6 +506,288 @@ async function handleDeleteRecord(docId) {
   saveRecords(records);
   renderAll();
   setFeedback('kb-upload-feedback', `已移除本地文件：${repairDisplayFilename(target.doc_name)}`, 'success');
+}
+
+async function openChunkModal(docId) {
+  const record = records.find(item => item.doc_id === docId);
+  if (!record) {
+    return;
+  }
+
+  if (!proxyEnabled) {
+    setFeedback('kb-upload-feedback', '本地演示模式暂不支持查看切片', 'error');
+    return;
+  }
+
+  chunkModalState = {
+    ...createChunkModalState(),
+    open: true,
+    docId,
+    docName: repairDisplayFilename(record.doc_name),
+    loading: true
+  };
+  renderChunkModal();
+
+  try {
+    const result = await listKnowledgeBaseChunks({ doc_id: docId, limit: 100 });
+    chunkModalState.loading = false;
+    chunkModalState.chunks = result.records;
+    chunkModalState.totalNum = result.totalNum;
+    if (result.records.length > 0) {
+      chunkModalState.selectedPointId = String(result.records[0].point_id || '');
+      renderChunkModal();
+      await loadSelectedChunkDetail(chunkModalState.selectedPointId);
+      return;
+    }
+
+    renderChunkModal();
+  } catch (error) {
+    chunkModalState.loading = false;
+    chunkModalState.error = error.message || '切片加载失败';
+    renderChunkModal();
+  }
+}
+
+function closeChunkModal() {
+  chunkModalState = createChunkModalState();
+  renderChunkModal();
+}
+
+async function handleChunkSelect(pointId) {
+  if (!pointId || chunkModalState.selectedPointId === pointId && chunkModalState.selectedChunk) {
+    return;
+  }
+
+  chunkModalState.selectedPointId = pointId;
+  chunkModalState.selectedChunk = null;
+  chunkModalState.detailLoading = true;
+  chunkModalState.error = '';
+  renderChunkModal();
+  await loadSelectedChunkDetail(pointId);
+}
+
+async function loadSelectedChunkDetail(pointId) {
+  try {
+    const result = await getKnowledgeBaseChunkInfo({ point_id: pointId });
+    chunkModalState.selectedChunk = result.record;
+    chunkModalState.detailLoading = false;
+    chunkModalState.isDirty = false;
+    chunkModalState.error = '';
+    populateChunkForm(result.record);
+    renderChunkModal();
+  } catch (error) {
+    chunkModalState.detailLoading = false;
+    chunkModalState.error = error.message || '切片详情加载失败';
+    renderChunkModal();
+  }
+}
+
+async function refreshChunkList() {
+  if (!chunkModalState.docId) {
+    return;
+  }
+
+  chunkModalState.loading = true;
+  chunkModalState.error = '';
+  renderChunkModal();
+
+  try {
+    const result = await listKnowledgeBaseChunks({ doc_id: chunkModalState.docId, limit: 100 });
+    chunkModalState.loading = false;
+    chunkModalState.chunks = result.records;
+    chunkModalState.totalNum = result.totalNum;
+    if (chunkModalState.selectedPointId) {
+      const exists = result.records.some(item => String(item.point_id || '') === chunkModalState.selectedPointId);
+      if (!exists) {
+        chunkModalState.selectedPointId = result.records[0] ? String(result.records[0].point_id || '') : '';
+      }
+    } else {
+      chunkModalState.selectedPointId = result.records[0] ? String(result.records[0].point_id || '') : '';
+    }
+
+    renderChunkModal();
+    if (chunkModalState.selectedPointId) {
+      await loadSelectedChunkDetail(chunkModalState.selectedPointId);
+    }
+  } catch (error) {
+    chunkModalState.loading = false;
+    chunkModalState.error = error.message || '切片刷新失败';
+    renderChunkModal();
+  }
+}
+
+async function handleChunkSave() {
+  if (!chunkModalState.selectedPointId || !chunkModalState.selectedChunk) {
+    return;
+  }
+
+  const contentInput = document.getElementById('kb-chunk-content');
+  const titleInput = document.getElementById('kb-chunk-title');
+  const questionInput = document.getElementById('kb-chunk-question');
+  const fields = collectChunkFields();
+
+  chunkModalState.saving = true;
+  chunkModalState.error = '';
+  renderChunkModal();
+
+  try {
+    await updateKnowledgeBaseChunk({
+      point_id: chunkModalState.selectedPointId,
+      chunk_title: titleInput?.value || '',
+      question: questionInput?.value || '',
+      content: contentInput?.value || '',
+      ...(fields.length > 0 ? { fields } : {})
+    });
+
+    setFeedback('kb-upload-feedback', '切片内容已提交更新', 'success');
+    await loadSelectedChunkDetail(chunkModalState.selectedPointId);
+    await refreshChunkList();
+  } catch (error) {
+    chunkModalState.saving = false;
+    chunkModalState.error = error.message || '切片更新失败';
+    renderChunkModal();
+  }
+}
+
+function renderChunkModal() {
+  const modal = document.getElementById('kb-chunk-modal');
+  if (!modal) return;
+
+  modal.classList.toggle('show', chunkModalState.open);
+  if (!chunkModalState.open) {
+    return;
+  }
+
+  renderChunkModalHeader();
+  renderChunkList();
+  renderChunkDetail();
+}
+
+function renderChunkModalHeader() {
+  setText('kb-chunk-modal-title', chunkModalState.docName || '切片详情');
+  setText(
+    'kb-chunk-modal-subtitle',
+    chunkModalState.totalNum
+      ? `当前文档共有 ${chunkModalState.totalNum} 个切片，可查看详情并直接修改内容`
+      : '可查看当前文档的切片内容，并直接修改后提交'
+  );
+
+  const saveButton = document.getElementById('kb-chunk-save');
+  if (saveButton) {
+    saveButton.disabled = chunkModalState.saving || !chunkModalState.selectedPointId;
+    saveButton.textContent = chunkModalState.saving ? '保存中...' : '保存修改';
+  }
+}
+
+function renderChunkList() {
+  const container = document.getElementById('kb-chunk-list');
+  if (!container) return;
+
+  if (chunkModalState.loading) {
+    container.innerHTML = '<div class="kb-chunk-empty">切片列表加载中...</div>';
+    return;
+  }
+
+  if (chunkModalState.chunks.length === 0) {
+    container.innerHTML = '<div class="kb-chunk-empty">当前文档暂无切片</div>';
+    return;
+  }
+
+  container.innerHTML = chunkModalState.chunks.map((chunk, index) => {
+    const pointId = String(chunk.point_id || '');
+    const isActive = pointId === chunkModalState.selectedPointId;
+    return `
+      <button type="button" class="kb-chunk-item ${isActive ? 'active' : ''}" data-point-id="${escapeHtml(pointId)}">
+        <div class="kb-chunk-item-title">${escapeHtml(getChunkDisplayTitle(chunk, index))}</div>
+        <div class="kb-chunk-item-meta">${escapeHtml(getChunkMeta(chunk))}</div>
+        <div class="kb-chunk-item-preview">${escapeHtml(getChunkPreview(chunk))}</div>
+      </button>
+    `;
+  }).join('');
+}
+
+function renderChunkDetail() {
+  const detail = chunkModalState.selectedChunk;
+  const errorEl = document.getElementById('kb-chunk-error');
+  const detailPanel = document.getElementById('kb-chunk-detail-panel');
+
+  if (errorEl) {
+    errorEl.textContent = chunkModalState.error || '';
+  }
+
+  if (!detailPanel) return;
+
+  if (chunkModalState.detailLoading) {
+    detailPanel.classList.add('loading');
+    return;
+  }
+
+  detailPanel.classList.remove('loading');
+
+  if (!detail) {
+    populateChunkForm(null);
+    return;
+  }
+
+  populateChunkForm(detail);
+}
+
+function populateChunkForm(detail) {
+  const titleInput = document.getElementById('kb-chunk-title');
+  const questionInput = document.getElementById('kb-chunk-question');
+  const contentInput = document.getElementById('kb-chunk-content');
+  const fieldsList = document.getElementById('kb-chunk-fields-list');
+  const metaEl = document.getElementById('kb-chunk-meta');
+
+  if (!detail) {
+    if (titleInput) titleInput.value = '';
+    if (questionInput) questionInput.value = '';
+    if (contentInput) contentInput.value = '';
+    if (fieldsList) fieldsList.innerHTML = '';
+    if (metaEl) metaEl.textContent = '';
+    syncFieldTip();
+    return;
+  }
+
+  if (titleInput) titleInput.value = String(detail.chunk_title || '');
+  if (questionInput) questionInput.value = normalizeChunkQuestion(detail);
+  if (contentInput) {
+    contentInput.value = String(detail.content || '');
+    autoResizeTextarea(contentInput);
+  }
+
+  if (fieldsList) {
+    fieldsList.innerHTML = '';
+    normalizeChunkFields(detail.fields ?? detail.table_chunk_fields).forEach(field => {
+      appendChunkFieldRow(field);
+    });
+    syncFieldTip();
+  }
+
+  if (metaEl) {
+    metaEl.textContent = [
+      detail.sheet_name ? `Sheet：${detail.sheet_name}` : '',
+      detail.chunk_type ? `类型：${detail.chunk_type}` : '',
+      detail.chunk_status ? `状态：${detail.chunk_status}` : ''
+    ].filter(Boolean).join('  |  ');
+  }
+}
+
+function createChunkModalState() {
+  return {
+    open: false,
+    docId: '',
+    docName: '',
+    totalNum: 0,
+    chunks: [],
+    loading: false,
+    detailLoading: false,
+    selectedPointId: '',
+    selectedChunk: null,
+    saving: false,
+    isDirty: false,
+    error: ''
+  };
 }
 
 async function loadInitialRecords() {
@@ -702,6 +1089,117 @@ function defaultUploadTaskDetail(task) {
   }
 
   return '文件正在提交到知识库并等待处理';
+}
+
+function getChunkDisplayTitle(chunk, index) {
+  const explicitTitle = String(chunk.chunk_title || '').trim();
+  if (explicitTitle) {
+    return explicitTitle;
+  }
+
+  const question = normalizeChunkQuestion(chunk);
+  if (question) {
+    return question;
+  }
+
+  if (chunk.sheet_name) {
+    return `${chunk.sheet_name} · 切片 ${index + 1}`;
+  }
+
+  return `切片 ${index + 1}`;
+}
+
+function getChunkMeta(chunk) {
+  return [
+    chunk.sheet_name ? `Sheet：${chunk.sheet_name}` : '',
+    chunk.chunk_type ? `类型：${chunk.chunk_type}` : '',
+    chunk.chunk_status ? `状态：${chunk.chunk_status}` : ''
+  ].filter(Boolean).join('  |  ');
+}
+
+function getChunkPreview(chunk) {
+  return String(chunk.content || '').replace(/\s+/g, ' ').trim() || '暂无切片内容';
+}
+
+function normalizeChunkQuestion(chunk) {
+  const question = chunk?.question;
+  if (Array.isArray(question)) {
+    return question.filter(Boolean).join(' / ');
+  }
+  return String(question || '').trim();
+}
+
+function formatChunkFields(fields) {
+  if (fields === undefined || fields === null || fields === '') {
+    return '';
+  }
+
+  try {
+    return JSON.stringify(fields, null, 2);
+  } catch {
+    return String(fields);
+  }
+}
+
+function normalizeChunkFields(fields) {
+  if (!Array.isArray(fields)) {
+    return [];
+  }
+
+  return fields.map(field => ({
+    field_name: String(field?.field_name || ''),
+    field_value: String(field?.field_value || '')
+  }));
+}
+
+function appendChunkFieldRow(field = { field_name: '', field_value: '' }) {
+  const fieldsList = document.getElementById('kb-chunk-fields-list');
+  if (!fieldsList) return;
+
+  const row = document.createElement('div');
+  row.className = 'kb-chunk-field-row';
+  row.innerHTML = `
+    <input class="form-input kb-chunk-field-name" data-field-name placeholder="字段名" value="${escapeHtml(field.field_name)}">
+    <textarea class="form-textarea kb-chunk-field-value" data-field-value placeholder="字段值">${escapeHtml(field.field_value)}</textarea>
+    <button type="button" class="btn-outline kb-chunk-field-remove" data-field-remove>删除</button>
+  `;
+  fieldsList.appendChild(row);
+
+  const valueTextarea = row.querySelector('[data-field-value]');
+  if (valueTextarea) {
+    autoResizeTextarea(valueTextarea);
+  }
+}
+
+function collectChunkFields() {
+  const fieldsList = document.getElementById('kb-chunk-fields-list');
+  if (!fieldsList) return [];
+
+  return Array.from(fieldsList.querySelectorAll('.kb-chunk-field-row'))
+    .map(row => ({
+      field_name: String(row.querySelector('[data-field-name]')?.value || '').trim(),
+      field_value: String(row.querySelector('[data-field-value]')?.value || '').trim()
+    }))
+    .filter(field => field.field_name || field.field_value);
+}
+
+function syncFieldTip() {
+  const tip = document.getElementById('kb-chunk-fields-tip');
+  const section = document.getElementById('kb-chunk-fields-section');
+  const fields = collectChunkFields();
+  if (tip) {
+    tip.style.display = fields.length === 0 ? 'block' : 'none';
+  }
+  if (section) {
+    section.classList.toggle('is-empty', fields.length === 0);
+  }
+}
+
+function autoResizeTextarea(element) {
+  if (!element) return;
+  const minHeight = element.classList.contains('kb-chunk-field-value') ? 88 : 120;
+  element.style.height = 'auto';
+  element.style.height = `${Math.max(element.scrollHeight, minHeight)}px`;
 }
 
 function repairDisplayFilename(filename) {
