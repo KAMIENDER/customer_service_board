@@ -12,6 +12,18 @@ import {
   loadFilterParams,
   saveFilterParams
 } from './api.js';
+import {
+  deleteCoverageSceneBinding,
+  getKnowledgeBaseFileInfo,
+  getKnowledgeBaseChunkInfo,
+  isKnowledgeBaseProxyEnabled,
+  listCoverageSceneBindings,
+  listKnowledgeBaseChunks,
+  listKnowledgeBaseFiles,
+  saveCoverageSceneBinding,
+  updateKnowledgeBaseChunk,
+  uploadKnowledgeBaseFiles
+} from './knowledge-base-provider.js';
 import '../css/style.css';
 
 let currentFilterParams = { interval: 7 };
@@ -19,6 +31,15 @@ const savedFilterParams = loadFilterParams();
 if (savedFilterParams) {
   currentFilterParams = savedFilterParams;
 }
+
+const DETAIL_KB_STATUS_LABELS = {
+  0: '导入成功',
+  1: '导入失败',
+  2: '排队中',
+  3: '更新中',
+  6: '处理中'
+};
+const detailKnowledgeBaseEnabled = isKnowledgeBaseProxyEnabled();
 
 let coverageBoardState = {
   totalQuestions: MockData.coverageStats.totalQuestions.value,
@@ -29,6 +50,21 @@ const coverageCategoryExpandState = {
   general: new Set(),
   product: new Set()
 };
+
+let unansweredDetailModalState = {
+  detailKey: '',
+  problemType: '',
+  parentLabel: '',
+  subLabel: '',
+  unansweredCount: 0,
+  files: [],
+  loadingFiles: false,
+  linkedDocs: [],
+  activeDocId: '',
+  pickerSelectedDocIds: []
+};
+
+let detailChunkModalState = createDetailChunkModalState();
 
 let questionsPageState = {
   currentPage: 1,
@@ -42,6 +78,7 @@ document.addEventListener('DOMContentLoaded', function () {
   initCoverageCategoryToggle();
   initQuestionsTable();
   initUnansweredDetailModal();
+  initDetailChunkModal();
   initChatModal();
   initDateFilter();
 });
@@ -421,24 +458,130 @@ function initUnansweredDetailModal() {
   const uploadBtn = document.getElementById('detail-upload-doc-btn');
   const confirmBtn = document.getElementById('detail-confirm-doc-btn');
   const testBtn = document.getElementById('detail-mock-test-btn');
+  const fileInput = document.getElementById('detail-kb-file-input');
+  const pickerModal = document.getElementById('detail-kb-picker-modal');
+  const pickerClose = document.getElementById('detail-kb-picker-close');
+  const pickerCancel = document.getElementById('detail-kb-picker-cancel');
+  const pickerConfirm = document.getElementById('detail-kb-picker-confirm');
 
   if (uploadBtn) {
     uploadBtn.addEventListener('click', () => {
-      window.alert('知识文档上传入口待接入。当前先完成展示样式和分类结构。');
+      if (!detailKnowledgeBaseEnabled) {
+        window.alert('知识库代理未配置，当前无法上传知识文档。');
+        return;
+      }
+      fileInput?.click();
     });
   }
 
   if (confirmBtn) {
     confirmBtn.addEventListener('click', () => {
-      window.alert('知识文档确认流程待接入。');
+      window.alert('当前卡片里的文档绑定会实时保存；如果你修改了 chunk 内容，请在“查看切片”弹层里点击“保存修改”。');
     });
   }
 
   if (testBtn) {
-    testBtn.addEventListener('click', () => {
-      window.alert('模拟测试流程待接入。');
+    testBtn.addEventListener('click', async () => {
+      await runDetailKnowledgeMockCheck();
     });
   }
+
+  if (fileInput) {
+    fileInput.addEventListener('change', async event => {
+      const files = Array.from(event.target.files || []);
+      event.target.value = '';
+      if (!files.length) return;
+      await handleDetailKnowledgeUpload(files);
+    });
+  }
+
+  if (pickerClose) {
+    pickerClose.addEventListener('click', () => {
+      setDetailKnowledgePickerVisible(false);
+    });
+  }
+
+  if (pickerCancel) {
+    pickerCancel.addEventListener('click', () => {
+      setDetailKnowledgePickerVisible(false);
+    });
+  }
+
+  if (pickerModal) {
+    pickerModal.addEventListener('click', event => {
+      if (event.target === pickerModal) {
+        setDetailKnowledgePickerVisible(false);
+      }
+    });
+  }
+
+  document.addEventListener('click', async event => {
+    const trigger = event.target.closest('[data-detail-kb-open-picker]');
+    if (!trigger) return;
+    event.preventDefault();
+    await toggleDetailKnowledgePicker();
+  });
+
+  document.addEventListener('click', async event => {
+    const option = event.target.closest('[data-kb-doc-id]');
+    if (!option) return;
+    if (!option.closest('#detail-kb-picker-body')) return;
+
+    const docId = option.dataset.kbDocId || '';
+    if (!docId) return;
+    toggleDetailKnowledgeSelection(docId);
+    renderDetailKnowledgePicker();
+  });
+
+  if (pickerConfirm) {
+    pickerConfirm.addEventListener('click', async () => {
+      await confirmDetailKnowledgeSelection();
+    });
+  }
+
+  document.addEventListener('click', async event => {
+    const action = event.target.closest('[data-bound-doc-action]');
+    if (!action) return;
+    if (!action.closest('#detail-kb-status')) return;
+
+    const docId = action.dataset.docId || '';
+    const docName = action.dataset.docName || '';
+    const docType = action.dataset.docType || '';
+    const processStatus = Number(action.dataset.docStatus || 0);
+    const operation = action.dataset.boundDocAction || '';
+
+    if (!docId || !operation) return;
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (operation === 'activate') {
+      unansweredDetailModalState.activeDocId = docId;
+      renderDetailKnowledgeStatus('已切换当前测试文档');
+      return;
+    }
+
+    if (operation === 'remove') {
+      if (!window.confirm(`确认解除「${docName || docId}」与当前细分场景的绑定吗？`)) {
+        return;
+      }
+      try {
+        await removeDetailKnowledgeLink(docId);
+        renderDetailKnowledgeStatus('已解除绑定');
+      } catch (error) {
+        renderDetailKnowledgeStatus(`解除绑定失败：${error?.message || '未知错误'}`);
+      }
+      return;
+    }
+
+    if (operation === 'chunks') {
+      openDetailChunkModal({
+        docId,
+        docName,
+        docType,
+        processStatus
+      });
+    }
+  });
 }
 
 function openUnansweredDetailModal({ detailKey, problemType, parentLabel, subLabel, unansweredCount }) {
@@ -459,6 +602,19 @@ function openUnansweredDetailModal({ detailKey, problemType, parentLabel, subLab
 
   const detailItems = MockData.unansweredDetailBoard.detailSamples[detailKey]
     || buildGenericDetailItems({ parentLabel, subLabel, unansweredCount, detailKey });
+
+  unansweredDetailModalState = {
+    detailKey,
+    problemType,
+    parentLabel,
+    subLabel,
+    unansweredCount,
+    files: [],
+    loadingFiles: false,
+    linkedDocs: [],
+    activeDocId: '',
+    pickerSelectedDocIds: []
+  };
 
   title.textContent = `${parentLabel} / ${subLabel} 未回复问题明细`;
   subtitle.textContent = `当前展示该分类下的未回复问题摘要，可继续查看会话内容确认具体问题。`;
@@ -486,7 +642,10 @@ function openUnansweredDetailModal({ detailKey, problemType, parentLabel, subLab
     `).join('');
   }
 
+  setDetailKnowledgePickerVisible(false);
+  renderDetailKnowledgeStatus('正在加载已绑定知识文档...');
   modal.classList.add('show');
+  void syncDetailKnowledgeBinding();
 }
 
 function buildGenericDetailItems({ parentLabel, subLabel, unansweredCount, detailKey }) {
@@ -500,6 +659,786 @@ function buildGenericDetailItems({ parentLabel, subLabel, unansweredCount, detai
     createdAt: `2026-03-${String(15 - index).padStart(2, '0')} 10:${String(12 + index * 7).padStart(2, '0')}`,
     conversationId: `mock-${detailKey}-${index + 1}`
   }));
+}
+
+function getCurrentDetailKnowledgeLink() {
+  const activeDocId = unansweredDetailModalState.activeDocId;
+  if (!activeDocId) {
+    return unansweredDetailModalState.linkedDocs[0] || null;
+  }
+  return unansweredDetailModalState.linkedDocs.find(item => item.docId === activeDocId) || unansweredDetailModalState.linkedDocs[0] || null;
+}
+
+async function saveDetailKnowledgeLink({
+  docId,
+  docName,
+  processStatus,
+  bindingSource = 'manual',
+  docType = '',
+  collectionName = '',
+  resourceId = '',
+  project = ''
+}) {
+  const payload = {
+    problem_type: unansweredDetailModalState.problemType,
+    parent_label: unansweredDetailModalState.parentLabel,
+    sub_label: unansweredDetailModalState.subLabel,
+    doc_id: docId,
+    doc_name: docName,
+    doc_type: docType || null,
+    process_status: processStatus,
+    binding_source: bindingSource,
+    collection_name: collectionName || null,
+    resource_id: resourceId || null,
+    project: project || null
+  };
+
+  const normalized = detailKnowledgeBaseEnabled
+    ? normalizeCoverageBindingRecord((await saveCoverageSceneBinding(payload)).record, payload)
+    : normalizeCoverageBindingRecord(payload, payload);
+
+  upsertDetailKnowledgeLink(normalized);
+  unansweredDetailModalState.activeDocId = normalized?.docId || unansweredDetailModalState.activeDocId;
+  return normalized;
+}
+
+async function removeDetailKnowledgeLink(docId) {
+  if (detailKnowledgeBaseEnabled) {
+    await deleteCoverageSceneBinding({
+      problem_type: unansweredDetailModalState.problemType,
+      parent_label: unansweredDetailModalState.parentLabel,
+      sub_label: unansweredDetailModalState.subLabel,
+      doc_id: docId
+    });
+  }
+
+  unansweredDetailModalState.linkedDocs = unansweredDetailModalState.linkedDocs.filter(item => item.docId !== docId);
+  if (unansweredDetailModalState.activeDocId === docId) {
+    unansweredDetailModalState.activeDocId = unansweredDetailModalState.linkedDocs[0]?.docId || '';
+  }
+}
+
+function upsertDetailKnowledgeLink(record) {
+  if (!record?.docId) return;
+  const next = unansweredDetailModalState.linkedDocs.filter(item => item.docId !== record.docId);
+  next.unshift(record);
+  unansweredDetailModalState.linkedDocs = next;
+}
+
+async function syncDetailKnowledgeBinding() {
+  if (!detailKnowledgeBaseEnabled) {
+    unansweredDetailModalState.linkedDocs = [];
+    unansweredDetailModalState.activeDocId = '';
+    renderDetailKnowledgeStatus();
+    return;
+  }
+
+  try {
+    const result = await listCoverageSceneBindings({
+      problem_type: unansweredDetailModalState.problemType,
+      parent_label: unansweredDetailModalState.parentLabel,
+      sub_label: unansweredDetailModalState.subLabel
+    });
+    unansweredDetailModalState.linkedDocs = (result.records || [])
+      .map(record => normalizeCoverageBindingRecord(record))
+      .filter(Boolean);
+    unansweredDetailModalState.activeDocId = unansweredDetailModalState.linkedDocs[0]?.docId || '';
+    renderDetailKnowledgeStatus();
+  } catch (error) {
+    unansweredDetailModalState.linkedDocs = [];
+    unansweredDetailModalState.activeDocId = '';
+    renderDetailKnowledgeStatus(`加载绑定关系失败：${error?.message || '未知错误'}`);
+  }
+}
+
+function renderDetailKnowledgeStatus(message = '') {
+  const statusEl = document.getElementById('detail-kb-status');
+  const uploadBtn = document.getElementById('detail-upload-doc-btn');
+  const confirmBtn = document.getElementById('detail-confirm-doc-btn');
+  if (!statusEl) return;
+
+  const links = unansweredDetailModalState.linkedDocs || [];
+  const activeLink = getCurrentDetailKnowledgeLink();
+
+  if (!detailKnowledgeBaseEnabled) {
+    statusEl.innerHTML = '<span class="detail-kb-status-empty">知识库代理未配置，当前无法上传或绑定文档</span>';
+    uploadBtn?.setAttribute('disabled', 'disabled');
+    confirmBtn?.setAttribute('disabled', 'disabled');
+    return;
+  }
+
+  uploadBtn?.removeAttribute('disabled');
+  confirmBtn?.removeAttribute('disabled');
+
+  if (links.length === 0) {
+    statusEl.innerHTML = `
+      <div class="detail-kb-status-main">未关联知识文档</div>
+      <div class="detail-kb-status-sub">${message || '可先上传新文档，或从现有知识库文件中选择后绑定到当前细分场景'}</div>
+      <div class="detail-kb-status-actions">
+        <button type="button" class="detail-kb-status-action-btn" data-detail-kb-open-picker>绑定已有知识文档</button>
+      </div>
+    `;
+    return;
+  }
+
+  statusEl.innerHTML = `
+    <div class="detail-kb-status-main">已关联 ${links.length} 份知识文档${message ? ` · ${escapeHtml(message)}` : ''}</div>
+    <div class="detail-kb-status-sub">当前测试文档：${escapeHtml(activeLink?.docName || '未选择')}</div>
+    <div class="detail-kb-status-actions">
+      <button type="button" class="detail-kb-status-action-btn" data-detail-kb-open-picker>继续绑定已有知识文档</button>
+    </div>
+    <div class="detail-kb-binding-list">
+      ${links.map(link => `
+        <div class="detail-kb-binding-card ${link.docId === activeLink?.docId ? 'active' : ''}">
+          <div class="detail-kb-binding-main">
+            <div class="detail-kb-binding-title">${escapeHtml(link.docName || link.docId)}</div>
+            <div class="detail-kb-binding-meta">
+              <span>${escapeHtml(String(link.docType || '').toUpperCase() || '--')}</span>
+              <span>${formatKnowledgeProcessStatus(link.processStatus)}</span>
+              <span>${escapeHtml(link.bindingSource || 'manual')}</span>
+            </div>
+          </div>
+          <div class="detail-kb-binding-actions">
+            <button type="button" class="detail-kb-mini-btn" data-bound-doc-action="activate" data-doc-id="${escapeHtml(link.docId)}" data-doc-name="${escapeHtml(link.docName || '')}" data-doc-type="${escapeHtml(link.docType || '')}" data-doc-status="${Number(link.processStatus ?? 0)}">${link.docId === activeLink?.docId ? '当前测试文档' : '设为测试文档'}</button>
+            <button type="button" class="detail-kb-mini-btn" data-bound-doc-action="chunks" data-doc-id="${escapeHtml(link.docId)}" data-doc-name="${escapeHtml(link.docName || '')}" data-doc-type="${escapeHtml(link.docType || '')}" data-doc-status="${Number(link.processStatus ?? 0)}">查看切片</button>
+            <button type="button" class="detail-kb-mini-btn danger" data-bound-doc-action="remove" data-doc-id="${escapeHtml(link.docId)}" data-doc-name="${escapeHtml(link.docName || '')}" data-doc-type="${escapeHtml(link.docType || '')}" data-doc-status="${Number(link.processStatus ?? 0)}">解除绑定</button>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+function setDetailKnowledgePickerVisible(visible) {
+  const pickerModal = document.getElementById('detail-kb-picker-modal');
+  if (!pickerModal) return;
+  pickerModal.classList.toggle('show', visible);
+}
+
+async function toggleDetailKnowledgePicker() {
+  const pickerModal = document.getElementById('detail-kb-picker-modal');
+  if (!pickerModal) return;
+
+  const shouldShow = !pickerModal.classList.contains('show');
+  if (!shouldShow) {
+    setDetailKnowledgePickerVisible(false);
+    return;
+  }
+
+  unansweredDetailModalState.pickerSelectedDocIds = (unansweredDetailModalState.linkedDocs || []).map(item => item.docId);
+  setDetailKnowledgePickerVisible(true);
+  await loadDetailKnowledgeFiles();
+}
+
+async function loadDetailKnowledgeFiles() {
+  const body = document.getElementById('detail-kb-picker-body');
+  if (!body) return;
+
+  unansweredDetailModalState.loadingFiles = true;
+  body.innerHTML = '<div class="detail-kb-picker-loading">正在加载知识库文件...</div>';
+
+  try {
+    const result = await listKnowledgeBaseFiles({ limit: 50, return_token_usage: true });
+    unansweredDetailModalState.files = sortKnowledgeFilesForContext(
+      result.records || [],
+      unansweredDetailModalState
+    );
+    renderDetailKnowledgePicker();
+  } catch (error) {
+    body.innerHTML = `<div class="detail-kb-picker-empty">加载知识库文件失败：${escapeHtml(error?.message || '未知错误')}</div>`;
+  } finally {
+    unansweredDetailModalState.loadingFiles = false;
+  }
+}
+
+function renderDetailKnowledgePicker() {
+  const body = document.getElementById('detail-kb-picker-body');
+  const summary = document.getElementById('detail-kb-picker-summary');
+  if (!body) return;
+
+  const files = unansweredDetailModalState.files || [];
+  const selectedDocIds = new Set(unansweredDetailModalState.pickerSelectedDocIds || []);
+
+  if (summary) {
+    summary.textContent = selectedDocIds.size > 0
+      ? `已选择 ${selectedDocIds.size} 份文档，点击“确定绑定”后统一保存`
+      : '可多选绑定，已绑定文档会默认选中';
+  }
+
+  if (!files.length) {
+    body.innerHTML = '<div class="detail-kb-picker-empty">当前知识库没有可选文件，请先上传文档。</div>';
+    return;
+  }
+
+  body.innerHTML = files.map(file => {
+    const processStatus = Number(file?.status?.process_status ?? 0);
+    const isSelected = selectedDocIds.has(String(file.doc_id || ''));
+    const matchScore = scoreKnowledgeFile(file, unansweredDetailModalState);
+
+    return `
+      <button
+        type="button"
+        class="detail-kb-file-option ${isSelected ? 'selected' : ''}"
+        data-kb-doc-id="${escapeHtml(file.doc_id || '')}"
+        data-kb-doc-name="${escapeHtml(file.doc_name || '')}"
+        data-kb-doc-status="${processStatus}"
+        data-kb-doc-type="${escapeHtml(file.doc_type || '')}">
+        <div class="detail-kb-file-main">
+          <span class="detail-kb-file-name">${escapeHtml(file.doc_name || file.doc_id || '未命名文档')}</span>
+          ${matchScore > 0 ? '<span class="detail-kb-file-badge">建议匹配</span>' : ''}
+        </div>
+        <div class="detail-kb-file-meta">
+          <span>${escapeHtml(String(file.doc_type || '').toUpperCase() || '--')}</span>
+          <span>${formatKnowledgeProcessStatus(processStatus)}</span>
+          <span>${formatDateTime(file.update_time)}</span>
+        </div>
+      </button>
+    `;
+  }).join('');
+}
+
+function sortKnowledgeFilesForContext(files, context) {
+  return [...files].sort((a, b) => {
+    const scoreDiff = scoreKnowledgeFile(b, context) - scoreKnowledgeFile(a, context);
+    if (scoreDiff !== 0) return scoreDiff;
+    return Number(b?.update_time || 0) - Number(a?.update_time || 0);
+  });
+}
+
+function toggleDetailKnowledgeSelection(docId) {
+  const current = new Set(unansweredDetailModalState.pickerSelectedDocIds || []);
+  if (current.has(docId)) {
+    current.delete(docId);
+  } else {
+    current.add(docId);
+  }
+  unansweredDetailModalState.pickerSelectedDocIds = Array.from(current);
+}
+
+async function confirmDetailKnowledgeSelection() {
+  const selectedDocIds = new Set(unansweredDetailModalState.pickerSelectedDocIds || []);
+  const currentLinks = unansweredDetailModalState.linkedDocs || [];
+  const currentDocIds = new Set(currentLinks.map(item => item.docId));
+  const filesById = new Map((unansweredDetailModalState.files || []).map(file => [String(file.doc_id || ''), file]));
+  const pickerConfirm = document.getElementById('detail-kb-picker-confirm');
+  const originalText = pickerConfirm?.textContent || '确定绑定';
+
+  if (pickerConfirm) {
+    pickerConfirm.disabled = true;
+    pickerConfirm.textContent = '保存中...';
+  }
+
+  try {
+    for (const link of currentLinks) {
+      if (!selectedDocIds.has(link.docId)) {
+        await removeDetailKnowledgeLink(link.docId);
+      }
+    }
+
+    for (const docId of selectedDocIds) {
+      if (currentDocIds.has(docId)) continue;
+      const file = filesById.get(docId);
+      if (!file) continue;
+      await saveDetailKnowledgeLink({
+        docId,
+        docName: file.doc_name || docId,
+        processStatus: Number(file?.status?.process_status ?? 0),
+        bindingSource: 'existing',
+        docType: file.doc_type || '',
+        collectionName: file.collection_name || '',
+        resourceId: file.resource_id || '',
+        project: file.project || ''
+      });
+    }
+
+    setDetailKnowledgePickerVisible(false);
+    renderDetailKnowledgeStatus('绑定关系已更新');
+  } catch (error) {
+    renderDetailKnowledgeStatus(`保存绑定失败：${error?.message || '未知错误'}`);
+  } finally {
+    if (pickerConfirm) {
+      pickerConfirm.disabled = false;
+      pickerConfirm.textContent = originalText;
+    }
+  }
+}
+
+function scoreKnowledgeFile(file, context) {
+  const name = String(file?.doc_name || '').toLowerCase();
+  const parent = String(context?.parentLabel || '').toLowerCase();
+  const sub = String(context?.subLabel || '').toLowerCase();
+  let score = 0;
+  if (sub && name.includes(sub)) score += 3;
+  if (parent && name.includes(parent)) score += 2;
+  return score;
+}
+
+async function handleDetailKnowledgeUpload(files) {
+  if (!detailKnowledgeBaseEnabled) return;
+
+  renderDetailKnowledgeStatus('正在上传知识文档...');
+
+  try {
+    const result = await uploadKnowledgeBaseFiles(files);
+    const firstItem = Array.isArray(result.items) ? result.items[0] : null;
+    if (!firstItem?.doc_id) {
+      throw new Error('上传成功，但未返回文档标识');
+    }
+
+    await saveDetailKnowledgeLink({
+      docId: firstItem.doc_id,
+      docName: firstItem.doc_name || files[0]?.name || firstItem.doc_id,
+      processStatus: Number(firstItem?.data?.data?.status?.process_status ?? 2),
+      bindingSource: 'upload',
+      docType: inferFileExtension(firstItem.doc_name || files[0]?.name || '')
+    });
+    renderDetailKnowledgeStatus('上传成功，已自动绑定到当前细分场景');
+    await loadDetailKnowledgeFiles();
+  } catch (error) {
+    renderDetailKnowledgeStatus(`上传失败：${error?.message || '未知错误'}`);
+  }
+}
+
+async function runDetailKnowledgeMockCheck() {
+  if (!detailKnowledgeBaseEnabled) {
+    window.alert('知识库代理未配置，当前无法执行模拟测试。');
+    return;
+  }
+
+  const link = getCurrentDetailKnowledgeLink();
+  if (!link?.docId) {
+    window.alert('请先上传或确认一个知识文档，再进行模拟测试。');
+    return;
+  }
+
+  const testBtn = document.getElementById('detail-mock-test-btn');
+  const originalText = testBtn?.firstChild?.textContent || '开始模拟测试';
+  if (testBtn) {
+    testBtn.disabled = true;
+    testBtn.firstChild.textContent = '检查知识文档状态中';
+  }
+
+  try {
+    const result = await getKnowledgeBaseFileInfo({ doc_id: link.docId, return_token_usage: true });
+    const record = result.record || {};
+    const processStatus = Number(record?.status?.process_status ?? link.processStatus ?? 0);
+
+    await saveDetailKnowledgeLink({
+      docId: link.docId,
+      docName: record.doc_name || link.docName || link.docId,
+      processStatus,
+      bindingSource: link.bindingSource || 'manual',
+      docType: record.doc_type || link.docType || ''
+    });
+    renderDetailKnowledgeStatus('已刷新知识文档状态');
+
+    if (processStatus === 0) {
+      window.alert(`知识文档已导入完成：${record.doc_name || link.docName}\n当前切片数：${record.point_num || 0}\n可以继续去知识库页查看或修改对应 chunk。`);
+    } else {
+      window.alert(`知识文档当前状态：${formatKnowledgeProcessStatus(processStatus)}，处理完成后再进行下一步核验。`);
+    }
+  } catch (error) {
+    window.alert(`模拟测试前检查失败：${error?.message || '未知错误'}`);
+  } finally {
+    if (testBtn) {
+      testBtn.disabled = false;
+      testBtn.firstChild.textContent = originalText;
+    }
+  }
+}
+
+function formatKnowledgeProcessStatus(processStatus) {
+  return DETAIL_KB_STATUS_LABELS[processStatus] || `状态 ${processStatus}`;
+}
+
+function normalizeCoverageBindingRecord(record, fallback = {}) {
+  if (!record || typeof record !== 'object') {
+    return null;
+  }
+
+  return {
+    docId: record.doc_id || fallback.doc_id || fallback.docId || '',
+    docName: record.doc_name || fallback.doc_name || fallback.docName || '',
+    docType: record.doc_type || fallback.doc_type || fallback.docType || '',
+    processStatus: record.process_status ?? fallback.process_status ?? fallback.processStatus ?? null,
+    bindingSource: record.binding_source || fallback.binding_source || fallback.bindingSource || 'manual',
+    collectionName: record.collection_name || fallback.collection_name || fallback.collectionName || '',
+    resourceId: record.resource_id || fallback.resource_id || fallback.resourceId || '',
+    project: record.project || fallback.project || '',
+    updatedAt: record.updated_at || fallback.updated_at || ''
+  };
+}
+
+function formatDateTime(value) {
+  if (!value) return '--';
+  const numeric = Number(value);
+  if (Number.isFinite(numeric) && numeric > 0) {
+    const date = new Date(numeric * 1000);
+    if (!Number.isNaN(date.getTime())) {
+      return date.toLocaleString('zh-CN', { hour12: false });
+    }
+  }
+  return String(value);
+}
+
+function inferFileExtension(filename) {
+  return String(filename || '').split('.').pop()?.toLowerCase() || '';
+}
+
+function createDetailChunkModalState() {
+  return {
+    open: false,
+    docId: '',
+    docName: '',
+    totalNum: 0,
+    chunks: [],
+    loading: false,
+    detailLoading: false,
+    selectedPointId: '',
+    selectedChunk: null,
+    saving: false,
+    error: ''
+  };
+}
+
+function initDetailChunkModal() {
+  const modal = document.getElementById('detail-kb-chunk-modal');
+  const closeBtn = document.getElementById('detail-kb-chunk-close');
+  const cancelBtn = document.getElementById('detail-kb-chunk-cancel');
+  const refreshBtn = document.getElementById('detail-kb-chunk-refresh');
+  const saveBtn = document.getElementById('detail-kb-chunk-save');
+  const list = document.getElementById('detail-kb-chunk-list');
+  const fieldAdd = document.getElementById('detail-kb-chunk-field-add');
+  const fieldsList = document.getElementById('detail-kb-chunk-fields-list');
+  const content = document.getElementById('detail-kb-chunk-content');
+
+  if (closeBtn) closeBtn.addEventListener('click', closeDetailChunkModal);
+  if (cancelBtn) cancelBtn.addEventListener('click', closeDetailChunkModal);
+  if (refreshBtn) refreshBtn.addEventListener('click', () => refreshDetailChunkList());
+  if (saveBtn) saveBtn.addEventListener('click', () => handleDetailChunkSave());
+  if (fieldAdd) fieldAdd.addEventListener('click', () => {
+    appendDetailChunkFieldRow();
+    syncDetailChunkFieldTip();
+  });
+  if (content) {
+    content.addEventListener('input', event => autoResizeTextarea(event.target));
+  }
+
+  if (fieldsList) {
+    fieldsList.addEventListener('click', event => {
+      const removeBtn = event.target.closest('[data-detail-field-remove]');
+      if (!removeBtn) return;
+      removeBtn.closest('.kb-chunk-field-row')?.remove();
+      syncDetailChunkFieldTip();
+    });
+    fieldsList.addEventListener('input', event => {
+      if (event.target.matches('[data-detail-field-value]')) {
+        autoResizeTextarea(event.target);
+      }
+      syncDetailChunkFieldTip();
+    });
+  }
+
+  if (list) {
+    list.addEventListener('click', event => {
+      const item = event.target.closest('[data-detail-point-id]');
+      if (!item) return;
+      const pointId = item.dataset.detailPointId || '';
+      if (!pointId || pointId === detailChunkModalState.selectedPointId) return;
+      void loadSelectedDetailChunkDetail(pointId);
+    });
+  }
+
+  if (modal) {
+    modal.addEventListener('click', event => {
+      if (event.target === modal) {
+        closeDetailChunkModal();
+      }
+    });
+  }
+}
+
+async function openDetailChunkModal(binding) {
+  detailChunkModalState = createDetailChunkModalState();
+  detailChunkModalState.open = true;
+  detailChunkModalState.docId = String(binding?.docId || '');
+  detailChunkModalState.docName = String(binding?.docName || binding?.docId || '切片详情');
+  renderDetailChunkModal();
+  await refreshDetailChunkList();
+}
+
+function closeDetailChunkModal() {
+  detailChunkModalState = createDetailChunkModalState();
+  renderDetailChunkModal();
+}
+
+async function refreshDetailChunkList() {
+  if (!detailChunkModalState.docId) return;
+
+  detailChunkModalState.loading = true;
+  detailChunkModalState.error = '';
+  renderDetailChunkModal();
+
+  try {
+    const result = await listKnowledgeBaseChunks({
+      doc_id: detailChunkModalState.docId,
+      limit: 100
+    });
+    detailChunkModalState.chunks = result.records || [];
+    detailChunkModalState.totalNum = Number(result.totalNum || detailChunkModalState.chunks.length || 0);
+    detailChunkModalState.loading = false;
+    detailChunkModalState.selectedPointId = detailChunkModalState.chunks[0]?.point_id || '';
+    renderDetailChunkModal();
+
+    if (detailChunkModalState.selectedPointId) {
+      await loadSelectedDetailChunkDetail(detailChunkModalState.selectedPointId);
+    } else {
+      detailChunkModalState.selectedChunk = null;
+      renderDetailChunkModal();
+    }
+  } catch (error) {
+    detailChunkModalState.loading = false;
+    detailChunkModalState.error = error?.message || '切片列表加载失败';
+    renderDetailChunkModal();
+  }
+}
+
+async function loadSelectedDetailChunkDetail(pointId) {
+  detailChunkModalState.selectedPointId = pointId;
+  detailChunkModalState.detailLoading = true;
+  detailChunkModalState.error = '';
+  renderDetailChunkModal();
+
+  try {
+    const result = await getKnowledgeBaseChunkInfo({ point_id: pointId });
+    detailChunkModalState.selectedChunk = result.record || null;
+    detailChunkModalState.detailLoading = false;
+    renderDetailChunkModal();
+  } catch (error) {
+    detailChunkModalState.detailLoading = false;
+    detailChunkModalState.error = error?.message || '切片详情加载失败';
+    renderDetailChunkModal();
+  }
+}
+
+async function handleDetailChunkSave() {
+  if (!detailChunkModalState.selectedPointId || !detailChunkModalState.selectedChunk) return;
+
+  const contentInput = document.getElementById('detail-kb-chunk-content');
+  const titleInput = document.getElementById('detail-kb-chunk-title');
+  const questionInput = document.getElementById('detail-kb-chunk-question');
+  const fields = collectDetailChunkFields();
+
+  detailChunkModalState.saving = true;
+  detailChunkModalState.error = '';
+  renderDetailChunkModal();
+
+  try {
+    await updateKnowledgeBaseChunk({
+      point_id: detailChunkModalState.selectedPointId,
+      chunk_title: titleInput?.value || '',
+      question: questionInput?.value || '',
+      content: contentInput?.value || '',
+      ...(fields.length > 0 ? { fields } : {})
+    });
+    detailChunkModalState.saving = false;
+    await loadSelectedDetailChunkDetail(detailChunkModalState.selectedPointId);
+    await refreshDetailChunkList();
+    window.alert('切片内容已保存');
+  } catch (error) {
+    detailChunkModalState.saving = false;
+    detailChunkModalState.error = error?.message || '切片更新失败';
+    renderDetailChunkModal();
+  }
+}
+
+function renderDetailChunkModal() {
+  const modal = document.getElementById('detail-kb-chunk-modal');
+  if (!modal) return;
+
+  modal.classList.toggle('show', detailChunkModalState.open);
+  if (!detailChunkModalState.open) return;
+
+  setTextOrPlaceholder('detail-kb-chunk-modal-title', detailChunkModalState.docName || '切片详情');
+  setTextOrPlaceholder(
+    'detail-kb-chunk-modal-subtitle',
+    detailChunkModalState.totalNum
+      ? `当前文档共有 ${detailChunkModalState.totalNum} 个切片，可查看详情并直接修改内容`
+      : '可查看当前文档切片内容，并直接修改后提交'
+  );
+
+  const saveButton = document.getElementById('detail-kb-chunk-save');
+  if (saveButton) {
+    saveButton.disabled = detailChunkModalState.saving || !detailChunkModalState.selectedPointId;
+    saveButton.textContent = detailChunkModalState.saving ? '保存中...' : '保存修改';
+  }
+
+  renderDetailChunkList();
+  renderDetailChunkDetail();
+}
+
+function renderDetailChunkList() {
+  const container = document.getElementById('detail-kb-chunk-list');
+  if (!container) return;
+
+  if (detailChunkModalState.loading) {
+    container.innerHTML = '<div class="kb-chunk-empty">切片列表加载中...</div>';
+    return;
+  }
+
+  if (detailChunkModalState.chunks.length === 0) {
+    container.innerHTML = '<div class="kb-chunk-empty">当前文档暂无切片</div>';
+    return;
+  }
+
+  container.innerHTML = detailChunkModalState.chunks.map((chunk, index) => {
+    const pointId = String(chunk.point_id || '');
+    const isActive = pointId === detailChunkModalState.selectedPointId;
+    return `
+      <button type="button" class="kb-chunk-item ${isActive ? 'active' : ''}" data-detail-point-id="${escapeHtml(pointId)}">
+        <div class="kb-chunk-item-title">${escapeHtml(getChunkDisplayTitle(chunk, index))}</div>
+        <div class="kb-chunk-item-meta">${escapeHtml(getChunkMeta(chunk))}</div>
+        <div class="kb-chunk-item-preview">${escapeHtml(getChunkPreview(chunk))}</div>
+      </button>
+    `;
+  }).join('');
+}
+
+function renderDetailChunkDetail() {
+  const errorEl = document.getElementById('detail-kb-chunk-error');
+  const panel = document.getElementById('detail-kb-chunk-detail-panel');
+  if (errorEl) errorEl.textContent = detailChunkModalState.error || '';
+  if (!panel) return;
+
+  if (detailChunkModalState.detailLoading) {
+    panel.classList.add('loading');
+    return;
+  }
+
+  panel.classList.remove('loading');
+  populateDetailChunkForm(detailChunkModalState.selectedChunk);
+}
+
+function populateDetailChunkForm(detail) {
+  const titleInput = document.getElementById('detail-kb-chunk-title');
+  const questionInput = document.getElementById('detail-kb-chunk-question');
+  const contentInput = document.getElementById('detail-kb-chunk-content');
+  const fieldsList = document.getElementById('detail-kb-chunk-fields-list');
+  const metaEl = document.getElementById('detail-kb-chunk-meta');
+
+  if (!detail) {
+    if (titleInput) titleInput.value = '';
+    if (questionInput) questionInput.value = '';
+    if (contentInput) contentInput.value = '';
+    if (fieldsList) fieldsList.innerHTML = '';
+    if (metaEl) metaEl.textContent = '';
+    syncDetailChunkFieldTip();
+    return;
+  }
+
+  if (titleInput) titleInput.value = String(detail.chunk_title || '');
+  if (questionInput) questionInput.value = normalizeChunkQuestion(detail);
+  if (contentInput) {
+    contentInput.value = String(detail.content || '');
+    autoResizeTextarea(contentInput);
+  }
+  if (fieldsList) {
+    fieldsList.innerHTML = '';
+    normalizeChunkFields(detail.fields ?? detail.table_chunk_fields).forEach(field => {
+      appendDetailChunkFieldRow(field);
+    });
+    syncDetailChunkFieldTip();
+  }
+  if (metaEl) {
+    metaEl.textContent = [
+      detail.sheet_name ? `Sheet：${detail.sheet_name}` : '',
+      detail.chunk_type ? `类型：${detail.chunk_type}` : '',
+      detail.chunk_status ? `状态：${detail.chunk_status}` : ''
+    ].filter(Boolean).join('  |  ');
+  }
+}
+
+function appendDetailChunkFieldRow(field = { field_name: '', field_value: '' }) {
+  const fieldsList = document.getElementById('detail-kb-chunk-fields-list');
+  if (!fieldsList) return;
+
+  const row = document.createElement('div');
+  row.className = 'kb-chunk-field-row';
+  row.innerHTML = `
+    <input class="form-input kb-chunk-field-name" data-detail-field-name placeholder="字段名" value="${escapeHtml(field.field_name)}">
+    <textarea class="form-textarea kb-chunk-field-value" data-detail-field-value placeholder="字段值">${escapeHtml(field.field_value)}</textarea>
+    <button type="button" class="btn-outline kb-chunk-field-remove" data-detail-field-remove>删除</button>
+  `;
+  fieldsList.appendChild(row);
+
+  const valueTextarea = row.querySelector('[data-detail-field-value]');
+  if (valueTextarea) autoResizeTextarea(valueTextarea);
+}
+
+function collectDetailChunkFields() {
+  const fieldsList = document.getElementById('detail-kb-chunk-fields-list');
+  if (!fieldsList) return [];
+
+  return Array.from(fieldsList.querySelectorAll('.kb-chunk-field-row'))
+    .map(row => ({
+      field_name: String(row.querySelector('[data-detail-field-name]')?.value || '').trim(),
+      field_value: String(row.querySelector('[data-detail-field-value]')?.value || '').trim()
+    }))
+    .filter(field => field.field_name || field.field_value);
+}
+
+function syncDetailChunkFieldTip() {
+  const tip = document.getElementById('detail-kb-chunk-fields-tip');
+  const section = document.getElementById('detail-kb-chunk-fields-section');
+  const fields = collectDetailChunkFields();
+  if (tip) tip.style.display = fields.length === 0 ? 'block' : 'none';
+  if (section) section.classList.toggle('is-empty', fields.length === 0);
+}
+
+function getChunkDisplayTitle(chunk, index) {
+  const explicitTitle = String(chunk.chunk_title || '').trim();
+  if (explicitTitle) return explicitTitle;
+  const question = normalizeChunkQuestion(chunk);
+  if (question) return question;
+  if (chunk.sheet_name) return `${chunk.sheet_name} · 切片 ${index + 1}`;
+  return `切片 ${index + 1}`;
+}
+
+function getChunkMeta(chunk) {
+  return [
+    chunk.sheet_name ? `Sheet：${chunk.sheet_name}` : '',
+    chunk.chunk_type ? `类型：${chunk.chunk_type}` : '',
+    chunk.chunk_status ? `状态：${chunk.chunk_status}` : ''
+  ].filter(Boolean).join('  |  ');
+}
+
+function getChunkPreview(chunk) {
+  return String(chunk.content || '').replace(/\s+/g, ' ').trim() || '暂无切片内容';
+}
+
+function normalizeChunkQuestion(chunk) {
+  const question = chunk?.question;
+  if (Array.isArray(question)) {
+    return question.filter(Boolean).join(' / ');
+  }
+  return String(question || '').trim();
+}
+
+function normalizeChunkFields(fields) {
+  if (!Array.isArray(fields)) return [];
+  return fields.map(field => ({
+    field_name: String(field?.field_name || ''),
+    field_value: String(field?.field_value || '')
+  }));
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
 }
 
 async function initQuestionsTable() {

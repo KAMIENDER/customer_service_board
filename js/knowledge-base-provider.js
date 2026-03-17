@@ -4,6 +4,53 @@ export function isKnowledgeBaseProxyEnabled() {
   return Boolean(proxyBaseUrl);
 }
 
+export async function getCoverageSceneBinding(params = {}) {
+  const search = new URLSearchParams();
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && String(value).trim() !== '') {
+      search.set(key, String(value));
+    }
+  });
+
+  const suffix = search.size > 0 ? `?${search.toString()}` : '';
+  const data = await requestProxy(`/coverage-scene-binding${suffix}`, { method: 'GET' });
+  return normalizeBindingResponse(data);
+}
+
+export async function listCoverageSceneBindings(params = {}) {
+  const search = new URLSearchParams();
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && String(value).trim() !== '') {
+      search.set(key, String(value));
+    }
+  });
+
+  const suffix = search.size > 0 ? `?${search.toString()}` : '';
+  const data = await requestProxy(`/coverage-scene-bindings${suffix}`, { method: 'GET' });
+  return normalizeBindingsResponse(data);
+}
+
+export async function saveCoverageSceneBinding(payload = {}) {
+  const data = await requestProxy('/coverage-scene-binding', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(payload)
+  });
+  return normalizeBindingResponse(data);
+}
+
+export async function deleteCoverageSceneBinding(payload = {}) {
+  return await requestProxy('/coverage-scene-binding', {
+    method: 'DELETE',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(payload)
+  });
+}
+
 export async function listKnowledgeBaseFiles(payload = {}) {
   const data = await requestProxy('/files/list', {
     method: 'POST',
@@ -216,5 +263,19 @@ function normalizeChunkInfoResponse(payload) {
   const data = payload?.data?.data || payload?.data || payload || {};
   return {
     record: data.point_info || data.record || data
+  };
+}
+
+function normalizeBindingResponse(payload) {
+  const data = payload?.data || payload || null;
+  return {
+    record: data && typeof data === 'object' ? data : null
+  };
+}
+
+function normalizeBindingsResponse(payload) {
+  const data = payload?.data || payload || [];
+  return {
+    records: Array.isArray(data) ? data : []
   };
 }

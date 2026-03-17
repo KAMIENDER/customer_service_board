@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import dotenv from 'dotenv';
 import express from 'express';
+import mysql from 'mysql2/promise';
 import multer from 'multer';
 import {
   buildVolcOpenApiHeaders,
@@ -34,8 +35,15 @@ const config = {
   publicBaseUrl: normalizeBaseUrl(process.env.PUBLIC_BASE_URL || ''),
   enableSignDebug: process.env.ENABLE_VOLC_SIGN_DEBUG === '1',
   uploadFileMaxSize: Number(process.env.UPLOAD_FILE_MAX_SIZE || 20 * 1024 * 1024),
-  uploadFileMaxCount: Number(process.env.UPLOAD_FILE_MAX_COUNT || 10)
+  uploadFileMaxCount: Number(process.env.UPLOAD_FILE_MAX_COUNT || 10),
+  mysqlHost: process.env.MYSQL_HOST || '',
+  mysqlPort: Number(process.env.MYSQL_PORT || 3306),
+  mysqlUser: process.env.MYSQL_USER || '',
+  mysqlPassword: process.env.MYSQL_PASSWORD || '',
+  mysqlDatabase: process.env.MYSQL_DATABASE || ''
 };
+
+let dbPool = null;
 
 const app = express();
 const upload = multer({
@@ -56,6 +64,7 @@ app.get('/api/health', (_req, res) => {
     ok: true,
     service: 'customer-service-board-proxy',
     credentialsConfigured: Boolean(config.accessKeyId && config.secretKey),
+    databaseConfigured: Boolean(config.mysqlHost && config.mysqlUser && config.mysqlDatabase),
     defaults: {
       region: config.region,
       service: config.service,
@@ -127,6 +136,205 @@ app.post('/api/knowledge-base/collection-info', asyncHandler(async (req, res) =>
   );
 
   res.json({ ok: true, data });
+}));
+
+app.get('/api/coverage-scene-binding', asyncHandler(async (req, res) => {
+  const problemType = String(req.query?.problem_type || '').trim();
+  const parentLabel = String(req.query?.parent_label || '').trim();
+  const subLabel = String(req.query?.sub_label || '').trim();
+
+  if (!problemType || !parentLabel || !subLabel) {
+    throw createHttpError(400, 'problem_type、parent_label、sub_label 不能为空');
+  }
+
+  const pool = getDbPool();
+  const [rows] = await pool.execute(
+    `SELECT
+      id,
+      problem_type,
+      parent_label,
+      sub_label,
+      resource_id,
+      collection_name,
+      project,
+      doc_id,
+      doc_name,
+      doc_type,
+      process_status,
+      binding_source,
+      remark,
+      created_at,
+      updated_at
+    FROM taobao_customer_service_kb_scene_binding
+    WHERE problem_type = ? AND parent_label = ? AND sub_label = ?
+    ORDER BY updated_at DESC, id DESC
+    LIMIT 1`,
+    [problemType, parentLabel, subLabel]
+  );
+
+  res.json({
+    ok: true,
+    data: Array.isArray(rows) && rows.length > 0 ? rows[0] : null
+  });
+}));
+
+app.get('/api/coverage-scene-bindings', asyncHandler(async (req, res) => {
+  const problemType = String(req.query?.problem_type || '').trim();
+  const parentLabel = String(req.query?.parent_label || '').trim();
+  const subLabel = String(req.query?.sub_label || '').trim();
+
+  if (!problemType || !parentLabel || !subLabel) {
+    throw createHttpError(400, 'problem_type、parent_label、sub_label 不能为空');
+  }
+
+  const pool = getDbPool();
+  const [rows] = await pool.execute(
+    `SELECT
+      id,
+      problem_type,
+      parent_label,
+      sub_label,
+      resource_id,
+      collection_name,
+      project,
+      doc_id,
+      doc_name,
+      doc_type,
+      process_status,
+      binding_source,
+      remark,
+      created_at,
+      updated_at
+    FROM taobao_customer_service_kb_scene_binding
+    WHERE problem_type = ? AND parent_label = ? AND sub_label = ?
+    ORDER BY updated_at DESC, id DESC`,
+    [problemType, parentLabel, subLabel]
+  );
+
+  res.json({
+    ok: true,
+    data: Array.isArray(rows) ? rows : []
+  });
+}));
+
+app.post('/api/coverage-scene-binding', asyncHandler(async (req, res) => {
+  const problemType = String(req.body?.problem_type || '').trim();
+  const parentLabel = String(req.body?.parent_label || '').trim();
+  const subLabel = String(req.body?.sub_label || '').trim();
+  const docId = String(req.body?.doc_id || '').trim();
+  const docName = String(req.body?.doc_name || '').trim();
+
+  if (!problemType || !parentLabel || !subLabel) {
+    throw createHttpError(400, 'problem_type、parent_label、sub_label 不能为空');
+  }
+
+  if (!docId || !docName) {
+    throw createHttpError(400, 'doc_id、doc_name 不能为空');
+  }
+
+  const target = resolveKnowledgeBaseTarget({
+    collectionName: String(req.body?.collection_name || '').trim(),
+    resourceId: String(req.body?.resource_id || '').trim(),
+    project: String(req.body?.project || '').trim()
+  });
+
+  const docType = String(req.body?.doc_type || '').trim() || null;
+  const processStatus = req.body?.process_status === undefined || req.body?.process_status === null || req.body?.process_status === ''
+    ? null
+    : Number(req.body.process_status);
+  const bindingSource = String(req.body?.binding_source || 'manual').trim() || 'manual';
+  const remark = String(req.body?.remark || '').trim() || null;
+
+  const pool = getDbPool();
+  await pool.execute(
+    `INSERT INTO taobao_customer_service_kb_scene_binding (
+      problem_type,
+      parent_label,
+      sub_label,
+      resource_id,
+      collection_name,
+      project,
+      doc_id,
+      doc_name,
+      doc_type,
+      process_status,
+      binding_source,
+      remark
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON DUPLICATE KEY UPDATE
+      resource_id = VALUES(resource_id),
+      collection_name = VALUES(collection_name),
+      project = VALUES(project),
+      doc_id = VALUES(doc_id),
+      doc_name = VALUES(doc_name),
+      doc_type = VALUES(doc_type),
+      process_status = VALUES(process_status),
+      binding_source = VALUES(binding_source),
+      remark = VALUES(remark),
+      updated_at = CURRENT_TIMESTAMP`,
+    [
+      problemType,
+      parentLabel,
+      subLabel,
+      target.resourceId || null,
+      target.collectionName || null,
+      target.project || null,
+      docId,
+      docName,
+      docType,
+      Number.isFinite(processStatus) ? processStatus : null,
+      bindingSource,
+      remark
+    ]
+  );
+
+  const [rows] = await pool.execute(
+    `SELECT
+      id,
+      problem_type,
+      parent_label,
+      sub_label,
+      resource_id,
+      collection_name,
+      project,
+      doc_id,
+      doc_name,
+      doc_type,
+      process_status,
+      binding_source,
+      remark,
+      created_at,
+      updated_at
+    FROM taobao_customer_service_kb_scene_binding
+    WHERE problem_type = ? AND parent_label = ? AND sub_label = ? AND doc_id = ?
+    LIMIT 1`,
+    [problemType, parentLabel, subLabel, docId]
+  );
+
+  res.json({
+    ok: true,
+    data: Array.isArray(rows) && rows.length > 0 ? rows[0] : null
+  });
+}));
+
+app.delete('/api/coverage-scene-binding', asyncHandler(async (req, res) => {
+  const problemType = String(req.body?.problem_type || '').trim();
+  const parentLabel = String(req.body?.parent_label || '').trim();
+  const subLabel = String(req.body?.sub_label || '').trim();
+  const docId = String(req.body?.doc_id || '').trim();
+
+  if (!problemType || !parentLabel || !subLabel || !docId) {
+    throw createHttpError(400, 'problem_type、parent_label、sub_label、doc_id 不能为空');
+  }
+
+  const pool = getDbPool();
+  await pool.execute(
+    `DELETE FROM taobao_customer_service_kb_scene_binding
+    WHERE problem_type = ? AND parent_label = ? AND sub_label = ? AND doc_id = ?`,
+    [problemType, parentLabel, subLabel, docId]
+  );
+
+  res.json({ ok: true });
 }));
 
 app.post('/api/files/list', asyncHandler(async (req, res) => {
@@ -1128,6 +1336,29 @@ function getCredentials() {
     accessKeyId: config.accessKeyId,
     secretKey: config.secretKey
   };
+}
+
+function getDbPool() {
+  if (dbPool) {
+    return dbPool;
+  }
+
+  if (!config.mysqlHost || !config.mysqlUser || !config.mysqlDatabase) {
+    throw createHttpError(500, '服务端未配置 MYSQL_HOST / MYSQL_USER / MYSQL_DATABASE');
+  }
+
+  dbPool = mysql.createPool({
+    host: config.mysqlHost,
+    port: config.mysqlPort,
+    user: config.mysqlUser,
+    password: config.mysqlPassword,
+    database: config.mysqlDatabase,
+    waitForConnections: true,
+    connectionLimit: 10,
+    charset: 'utf8mb4'
+  });
+
+  return dbPool;
 }
 
 function maskSensitiveHeaders(headers) {
