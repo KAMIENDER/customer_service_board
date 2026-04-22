@@ -40,7 +40,8 @@ const config = {
   mysqlPort: Number(process.env.MYSQL_PORT || 3306),
   mysqlUser: process.env.MYSQL_USER || '',
   mysqlPassword: process.env.MYSQL_PASSWORD || '',
-  mysqlDatabase: process.env.MYSQL_DATABASE || ''
+  mysqlDatabase: process.env.MYSQL_DATABASE || '',
+  knowledgeBacktestWebhookUrl: process.env.KNOWLEDGE_BACKTEST_WEBHOOK_URL || 'http://14.22.86.32:5678/webhook/test_knowledge_base'
 };
 
 let dbPool = null;
@@ -73,6 +74,540 @@ app.get('/api/health', (_req, res) => {
     }
   });
 });
+
+app.post('/api/customer-service/transfer-summary', asyncHandler(async (req, res) => {
+  const pool = getDbPool();
+  const companyId = await resolveCustomerServiceCompanyId(pool, String(req.body?.company_id || '').trim());
+  const { startTime, endTime } = resolveCustomerServiceDateRange(req.body || {});
+
+  const [conversationRows] = await pool.execute(
+    `SELECT COUNT(*) AS total
+    FROM taobao_customer_service_list
+    WHERE company_id = ? AND startTime BETWEEN ? AND ?`,
+    [companyId, startTime, endTime]
+  );
+
+  const [transferRows] = await pool.execute(
+    `SELECT
+      COUNT(*) AS total,
+      SUM(CASE WHEN COALESCE(reason, '') = '知识库无法回答' THEN 1 ELSE 0 END) AS no_answer_total
+    FROM taobao_transfer
+    WHERE company_id = ? AND created_at BETWEEN ? AND ?`,
+    [companyId, startTime, endTime]
+  );
+
+  const [reasonRows] = await pool.execute(
+    `SELECT
+      COALESCE(NULLIF(reason, ''), '未标注原因') AS reason,
+      COUNT(*) AS total
+    FROM taobao_transfer
+    WHERE company_id = ? AND created_at BETWEEN ? AND ?
+    GROUP BY COALESCE(NULLIF(reason, ''), '未标注原因')
+    ORDER BY total DESC
+    LIMIT 50`,
+    [companyId, startTime, endTime]
+  );
+
+  const allNum = Number(conversationRows?.[0]?.total || 0);
+  const transferNum = Number(transferRows?.[0]?.total || 0);
+  const noAnswerTransferNum = Number(transferRows?.[0]?.no_answer_total || 0);
+
+  res.json({
+    code: 0,
+    data: {
+      company_id: companyId,
+      all_num: allNum,
+      transfer_num: transferNum,
+      can_not_answer_and_transfer_num: noAnswerTransferNum,
+      reasons: Array.isArray(reasonRows) ? reasonRows.map(item => ({
+        reason: item.reason,
+        transfer_num: Number(item.total || 0),
+        share: transferNum > 0 ? Number(item.total || 0) / transferNum : 0
+      })) : []
+    }
+  });
+}));
+
+app.post('/api/customer-service/coverage-summary', asyncHandler(async (req, res) => {
+  const pool = getDbPool();
+  const companyId = await resolveCustomerServiceCompanyId(pool, String(req.body?.company_id || '').trim());
+  const { startTime, endTime } = resolveCustomerServiceDateRange(req.body || {});
+
+  const [rows] = await pool.execute(
+    `SELECT
+      COUNT(*) AS total_question_num,
+      SUM(CASE WHEN transfer_id IS NULL THEN 1 ELSE 0 END) AS answered_question_num
+    FROM taobao_customer_service_conversation_analysis_result
+    WHERE company_id = ?
+      AND COALESCE(transfer_created_at, created_at) BETWEEN ? AND ?`,
+    [companyId, startTime, endTime]
+  );
+
+  const summary = Array.isArray(rows) && rows[0] ? rows[0] : {};
+  const totalQuestionNum = Number(summary.total_question_num || 0);
+  const answeredQuestionNum = Number(summary.answered_question_num || 0);
+
+  res.json({
+    code: 0,
+    data: {
+      company_id: companyId,
+      start_time: startTime,
+      end_time: endTime,
+      total_question_num: totalQuestionNum,
+      answered_question_num: answeredQuestionNum,
+      coverage_rate: totalQuestionNum > 0 ? answeredQuestionNum / totalQuestionNum : 0
+    }
+  });
+}));
+
+app.post('/api/customer-service/coverage-breakdown', asyncHandler(async (req, res) => {
+  const pool = getDbPool();
+  const companyId = await resolveCustomerServiceCompanyId(pool, String(req.body?.company_id || '').trim());
+  const { startTime, endTime } = resolveCustomerServiceDateRange(req.body || {});
+
+  const [dictionaryRows] = await pool.execute(
+    `SELECT
+      scene_level1_code,
+      scene_level1_name,
+      scene_level2_code,
+      scene_level2_name,
+      scene_level3_code,
+      scene_level3_name,
+      sort_order
+    FROM taobao_customer_service_scene_dictionary
+    WHERE company_id = ?
+      AND scene_category = 'conversation_analysis'
+      AND leaf_level = 3
+      AND is_enabled = 1
+    ORDER BY scene_level1_name ASC, scene_level2_name ASC, sort_order ASC, scene_level3_name ASC`,
+    [companyId]
+  );
+
+  const [statRows] = await pool.execute(
+    `SELECT
+      scene_level1_code,
+      scene_level2_code,
+      scene_level3_code,
+      COUNT(*) AS total_question_num,
+      SUM(CASE WHEN transfer_id IS NULL THEN 1 ELSE 0 END) AS answered_question_num
+    FROM taobao_customer_service_conversation_analysis_result
+    WHERE company_id = ?
+      AND COALESCE(transfer_created_at, created_at) BETWEEN ? AND ?
+      AND scene_level1_code IS NOT NULL
+      AND scene_level2_code IS NOT NULL
+      AND scene_level3_code IS NOT NULL
+    GROUP BY scene_level1_code, scene_level2_code, scene_level3_code`,
+    [companyId, startTime, endTime]
+  );
+
+  const statMap = new Map(
+    (Array.isArray(statRows) ? statRows : []).map(item => [
+      [
+        item.scene_level1_code || '',
+        item.scene_level2_code || '',
+        item.scene_level3_code || ''
+      ].join('||'),
+      item
+    ])
+  );
+
+  const leafRows = (Array.isArray(dictionaryRows) ? dictionaryRows : []).map(item => {
+    const key = [
+      item.scene_level1_code || '',
+      item.scene_level2_code || '',
+      item.scene_level3_code || ''
+    ].join('||');
+    const stat = statMap.get(key);
+    const consultCount = Number(stat?.total_question_num || 0);
+    const answeredCount = Number(stat?.answered_question_num || 0);
+
+    return {
+      key,
+      level1Code: item.scene_level1_code || '',
+      level1Name: item.scene_level1_name || '',
+      labelCode: item.scene_level2_code || '',
+      label: item.scene_level2_name || '未分类',
+      subLabelCode: item.scene_level3_code || '',
+      subLabel: item.scene_level3_name || '未分类',
+      consultCount,
+      robotReplyCount: answeredCount,
+      replyRate: consultCount > 0 ? answeredCount / consultCount : 0,
+      unansweredCount: Math.max(consultCount - answeredCount, 0)
+    };
+  });
+
+  res.json({
+    code: 0,
+    data: {
+      company_id: companyId,
+      start_time: startTime,
+      end_time: endTime,
+      general_rows: leafRows.filter(item => item.level1Code === 'general_questions'),
+      product_rows: leafRows.filter(item => item.level1Code === 'product_questions')
+    }
+  });
+}));
+
+app.post('/api/customer-service/category-detail', asyncHandler(async (req, res) => {
+  const pool = getDbPool();
+  const companyId = await resolveCustomerServiceCompanyId(pool, String(req.body?.company_id || '').trim());
+  const { startTime, endTime } = resolveCustomerServiceDateRange(req.body || {});
+  const level1Code = String(req.body?.scene_level1_code || '').trim();
+  const level2Code = String(req.body?.scene_level2_code || '').trim();
+  const level3Code = String(req.body?.scene_level3_code || '').trim();
+  const limit = Math.min(Math.max(Number(req.body?.limit || 100), 1), 200);
+
+  const whereSql = [
+    'a.company_id = ?',
+    'COALESCE(a.transfer_created_at, a.created_at) BETWEEN ? AND ?',
+    'a.transfer_id IS NOT NULL'
+  ];
+  const whereParams = [companyId, startTime, endTime];
+
+  if (level1Code) {
+    whereSql.push('a.scene_level1_code = ?');
+    whereParams.push(level1Code);
+  }
+
+  if (level2Code) {
+    whereSql.push('a.scene_level2_code = ?');
+    whereParams.push(level2Code);
+  }
+
+  if (level3Code) {
+    whereSql.push('a.scene_level3_code = ?');
+    whereParams.push(level3Code);
+  }
+
+  const [countRows] = await pool.execute(
+    `SELECT COUNT(*) AS total
+    FROM taobao_customer_service_conversation_analysis_result a
+    WHERE ${whereSql.join(' AND ')}`,
+    whereParams
+  );
+
+  const [rows] = await pool.execute(
+    `SELECT
+      a.conversation_id,
+      COALESCE(NULLIF(a.buyer_nick, ''), NULLIF(l.buyerNick, ''), '-') AS buyer_nick,
+      COALESCE(NULLIF(a.seller_nick, ''), NULLIF(l.psnNickName, ''), NULLIF(l.sellerNick, ''), '-') AS seller_nick,
+      COALESCE(NULLIF(d.msg, ''), NULLIF(a.raw_reason, ''), '未提供问题内容') AS question,
+      COALESCE(NULLIF(a.raw_reason, ''), CONCAT(COALESCE(a.scene_level2_name, '--'), ' / ', COALESCE(a.scene_level3_name, '--'))) AS issue,
+      DATE_FORMAT(COALESCE(d.gmtCreated, a.transfer_created_at, a.created_at), '%Y-%m-%d %H:%i:%s') AS created_at
+    FROM taobao_customer_service_conversation_analysis_result a
+    LEFT JOIN taobao_customer_service_detail d
+      ON d.id = a.msg_table_id
+    LEFT JOIN taobao_customer_service_list l
+      ON l.company_id = a.company_id
+      AND l.tmp_conversation_id = a.conversation_id
+    WHERE ${whereSql.join(' AND ')}
+    ORDER BY COALESCE(a.transfer_created_at, a.created_at) DESC, a.id DESC
+    LIMIT ${limit}`,
+    whereParams
+  );
+
+  res.json({
+    code: 0,
+    data: {
+      company_id: companyId,
+      all_num: Number(countRows?.[0]?.total || 0),
+      questions: Array.isArray(rows) ? rows : []
+    }
+  });
+}));
+
+app.post('/api/customer-service/coverage-backtest', asyncHandler(async (req, res) => {
+  const pool = getDbPool();
+  const companyId = await resolveCustomerServiceCompanyId(pool, String(req.body?.company_id || '').trim());
+  const conversationIds = Array.isArray(req.body?.conversation_ids)
+    ? req.body.conversation_ids.map(item => String(item || '').trim()).filter(Boolean)
+    : [];
+
+  if (!conversationIds.length) {
+    throw createHttpError(400, 'conversation_ids 不能为空');
+  }
+
+  const uniqueConversationIds = Array.from(new Set(conversationIds)).slice(0, 100);
+  const results = await mapWithConcurrency(uniqueConversationIds, 3, async conversationId => {
+    const payload = {
+      tmp_conversation_id: conversationId,
+      company_id: companyId
+    };
+
+    try {
+      const data = await postJsonWithTimeout(config.knowledgeBacktestWebhookUrl, payload, 60000);
+      const resultData = data?.data || {};
+      const bestReply = String(resultData?.best_reply || '').trim();
+      const firstCandidateReply = String(resultData?.candidate?.[0]?.reply || '').trim();
+      const action = String(resultData?.action || '').trim();
+      const reply = bestReply || firstCandidateReply;
+      const hit = Boolean(reply) && reply !== '转人工' && action !== '转人工';
+
+      return {
+        conversation_id: conversationId,
+        success: true,
+        code: Number(data?.code ?? 0),
+        message: String(data?.msg || ''),
+        hit,
+        action,
+        reason: String(resultData?.reason || ''),
+        reply,
+        best_reply: bestReply,
+        summary: resultData?.summary ?? null,
+        raw: data
+      };
+    } catch (error) {
+      return {
+        conversation_id: conversationId,
+        success: false,
+        code: -1,
+        message: error?.message || '回测失败',
+        hit: false,
+        action: '',
+        reason: '',
+        reply: '',
+        best_reply: '',
+        summary: null
+      };
+    }
+  });
+
+  const total = results.length;
+  const hit = results.filter(item => item.hit).length;
+
+  res.json({
+    code: 0,
+    data: {
+      company_id: companyId,
+      total,
+      hit,
+      coverage_rate: total > 0 ? hit / total : 0,
+      results
+    }
+  });
+}));
+
+app.post('/api/customer-service/dashboard-metrics', asyncHandler(async (req, res) => {
+  const pool = getDbPool();
+  const companyId = await resolveCustomerServiceCompanyId(pool, String(req.body?.company_id || '').trim());
+  const { startTime, endTime } = resolveCustomerServiceDateRange(req.body || {});
+  const transferConversationSql = `
+    SELECT DISTINCT company_id, conversation_id
+    FROM taobao_transfer
+    WHERE company_id = ? AND created_at BETWEEN ? AND ?
+  `;
+
+  const [overviewRows] = await pool.execute(
+    `SELECT
+      COUNT(*) AS total_reception_count,
+      SUM(CASE WHEN tx.conversation_id IS NULL THEN 1 ELSE 0 END) AS auto_reception_count,
+      SUM(CASE WHEN tx.conversation_id IS NOT NULL THEN 1 ELSE 0 END) AS assist_reception_count
+    FROM taobao_customer_service_list l
+    LEFT JOIN (${transferConversationSql}) tx
+      ON tx.company_id = l.company_id
+      AND tx.conversation_id = l.tmp_conversation_id
+    WHERE l.company_id = ? AND l.startTime BETWEEN ? AND ?`,
+    [companyId, startTime, endTime, companyId, startTime, endTime]
+  );
+
+  const [autoRows] = await pool.execute(
+    `SELECT
+      CASE WHEN COALESCE(l.coversation_num, 0) <= 3 THEN 'short' ELSE 'long' END AS convo_type,
+      COUNT(*) AS reception_count,
+      SUM(CASE WHEN COALESCE(l.before_buy, 0) > 0 OR COALESCE(l.after_buy, 0) > 0 THEN 1 ELSE 0 END) AS inquiry_count,
+      SUM(CASE WHEN COALESCE(l.after_buy, 0) > COALESCE(l.before_buy, 0) THEN 1 ELSE 0 END) AS payment_count
+    FROM taobao_customer_service_list l
+    LEFT JOIN (${transferConversationSql}) tx
+      ON tx.company_id = l.company_id
+      AND tx.conversation_id = l.tmp_conversation_id
+    WHERE l.company_id = ? AND l.startTime BETWEEN ? AND ? AND tx.conversation_id IS NULL
+    GROUP BY convo_type`,
+    [companyId, startTime, endTime, companyId, startTime, endTime]
+  );
+
+  const [assistRows] = await pool.execute(
+    `SELECT
+      COUNT(*) AS reception_count,
+      SUM(CASE WHEN COALESCE(l.before_buy, 0) > 0 OR COALESCE(l.after_buy, 0) > 0 THEN 1 ELSE 0 END) AS inquiry_count,
+      SUM(CASE WHEN COALESCE(l.after_buy, 0) > COALESCE(l.before_buy, 0) THEN 1 ELSE 0 END) AS payment_count
+    FROM taobao_customer_service_list l
+    INNER JOIN (${transferConversationSql}) tx
+      ON tx.company_id = l.company_id
+      AND tx.conversation_id = l.tmp_conversation_id
+    WHERE l.company_id = ? AND l.startTime BETWEEN ? AND ?`,
+    [companyId, startTime, endTime, companyId, startTime, endTime]
+  );
+
+  const autoMetricsMap = new Map(
+    Array.isArray(autoRows)
+      ? autoRows.map(item => [String(item.convo_type), {
+        reception_count: Number(item.reception_count || 0),
+        inquiry_count: Number(item.inquiry_count || 0),
+        payment_count: Number(item.payment_count || 0)
+      }])
+      : []
+  );
+
+  const assistMetrics = Array.isArray(assistRows) && assistRows[0]
+    ? {
+      reception_count: Number(assistRows[0].reception_count || 0),
+      inquiry_count: Number(assistRows[0].inquiry_count || 0),
+      payment_count: Number(assistRows[0].payment_count || 0)
+    }
+    : {
+      reception_count: 0,
+      inquiry_count: 0,
+      payment_count: 0
+    };
+
+  res.json({
+    code: 0,
+    data: {
+      company_id: companyId,
+      total_reception_count: Number(overviewRows?.[0]?.total_reception_count || 0),
+      auto_reception_count: Number(overviewRows?.[0]?.auto_reception_count || 0),
+      assist_reception_count: Number(overviewRows?.[0]?.assist_reception_count || 0),
+      auto_short: autoMetricsMap.get('short') || {
+        reception_count: 0,
+        inquiry_count: 0,
+        payment_count: 0
+      },
+      auto_long: autoMetricsMap.get('long') || {
+        reception_count: 0,
+        inquiry_count: 0,
+        payment_count: 0
+      },
+      assist: assistMetrics
+    }
+  });
+}));
+
+app.post('/api/customer-service/token-cost', asyncHandler(async (req, res) => {
+  const pool = getDbPool();
+  const companyId = await resolveCustomerServiceCompanyId(pool, String(req.body?.company_id || '').trim());
+  const startTimeUnix = Number(req.body?.start_time_unix_time || 0);
+  const endTimeUnix = Number(req.body?.end_time_unix_time || 0);
+
+  if (!Number.isFinite(startTimeUnix) || !Number.isFinite(endTimeUnix) || startTimeUnix <= 0 || endTimeUnix <= 0) {
+    throw createHttpError(400, 'start_time_unix_time 和 end_time_unix_time 不能为空');
+  }
+
+  const [rows] = await pool.execute(
+    `SELECT
+      MAX(unix_timestamp) AS unix_timestamp,
+      SUM(token_cost) AS token_cost
+    FROM newapi_token_cost
+    WHERE company_id = ? AND unix_timestamp BETWEEN ? AND ?
+    GROUP BY DATE(FROM_UNIXTIME(unix_timestamp / 1000))
+    ORDER BY unix_timestamp ASC`,
+    [companyId, startTimeUnix, endTimeUnix]
+  );
+
+  res.json({
+    code: 0,
+    data: {
+      company_id: companyId,
+      records: Array.isArray(rows)
+        ? rows.map(item => ({
+          unix_timestamp: Number(item.unix_timestamp || 0),
+          token_cost: Number(item.token_cost || 0)
+        }))
+        : []
+    }
+  });
+}));
+
+app.post('/api/customer-service/questions', asyncHandler(async (req, res) => {
+  const pool = getDbPool();
+  const companyId = await resolveCustomerServiceCompanyId(pool, String(req.body?.company_id || '').trim());
+  const { startTime, endTime } = resolveCustomerServiceDateRange(req.body || {});
+  const offset = Math.max(Number(req.body?.offset || 0), 0);
+  const limit = Math.min(Math.max(Number(req.body?.limit || 20), 1), 100);
+  const reason = String(req.body?.reason || '').trim();
+
+  const whereSql = [
+    't.company_id = ?',
+    't.created_at BETWEEN ? AND ?'
+  ];
+  const whereParams = [companyId, startTime, endTime];
+
+  if (reason) {
+    whereSql.push('COALESCE(t.reason, \'\') = ?');
+    whereParams.push(reason);
+  }
+
+  const [countRows] = await pool.execute(
+    `SELECT COUNT(*) AS total
+    FROM taobao_transfer t
+    WHERE ${whereSql.join(' AND ')}`,
+    whereParams
+  );
+
+  const [rows] = await pool.execute(
+    `SELECT
+      t.conversation_id,
+      COALESCE(l.buyerNick, t.buyer_nick, '-') AS buyer_nick,
+      COALESCE(l.psnNickName, l.sellerNick, t.seller_nick, '-') AS seller_nick,
+      COALESCE(NULLIF(t.reason, ''), '未标注原因') AS reason,
+      DATE_FORMAT(t.created_at, '%Y-%m-%d %H:%i:%s') AS created_at
+    FROM taobao_transfer t
+    LEFT JOIN taobao_customer_service_list l
+      ON l.company_id = t.company_id
+      AND l.tmp_conversation_id = t.conversation_id
+    WHERE ${whereSql.join(' AND ')}
+    ORDER BY t.created_at DESC, t.id DESC
+    LIMIT ${limit} OFFSET ${offset}`,
+    whereParams
+  );
+
+  res.json({
+    code: 0,
+    data: {
+      company_id: companyId,
+      all_num: Number(countRows?.[0]?.total || 0),
+      questions: Array.isArray(rows) ? rows : []
+    }
+  });
+}));
+
+app.post('/api/customer-service/detail', asyncHandler(async (req, res) => {
+  const conversationId = String(req.body?.conversation_id || '').trim();
+  if (!conversationId) {
+    throw createHttpError(400, 'conversation_id 不能为空');
+  }
+
+  const pool = getDbPool();
+  const companyId = await resolveCustomerServiceCompanyId(pool, String(req.body?.company_id || '').trim());
+  const [rows] = await pool.execute(
+    `SELECT
+      buyerNick,
+      sellerNick,
+      psnNickName,
+      userNickFrom,
+      userNickTo,
+      type,
+      msg,
+      DATE_FORMAT(gmtCreated, '%Y-%m-%d %H:%i:%s') AS gmtCreated
+    FROM taobao_customer_service_detail
+    WHERE company_id = ? AND tmp_conversation_id = ?
+    ORDER BY gmtCreated ASC, id ASC`,
+    [companyId, conversationId]
+  );
+
+  const contents = Array.isArray(rows) ? rows.map(item => ({
+    ...item,
+    sender: inferCustomerServiceMessageSender(item)
+  })) : [];
+
+  res.json({
+    code: 0,
+    data: {
+      company_id: companyId,
+      conversation_id: conversationId,
+      contents
+    }
+  });
+}));
 
 app.post('/api/knowledge-base/collections', asyncHandler(async (req, res) => {
   const project = String(req.body?.project || '').trim();
@@ -559,6 +1094,77 @@ app.post('/api/chunks/info', asyncHandler(async (req, res) => {
   const data = await requestVolcOpenApi(
     {
       pathname: '/api/knowledge/point/info',
+      method: 'POST',
+      region,
+      service: 'air',
+      baseUrl: config.knowledgeBaseUrl,
+      body: JSON.stringify(payload)
+    },
+    getCredentials()
+  );
+
+  res.json({ ok: true, data });
+}));
+
+app.post('/api/chunks/add', asyncHandler(async (req, res) => {
+  const collectionName = String(req.body?.collection_name || '').trim();
+  const resourceId = String(req.body?.resource_id || '').trim();
+  const inputProject = String(req.body?.project || '').trim();
+  const docId = String(req.body?.doc_id || '').trim();
+  const chunkType = String(req.body?.chunk_type || '').trim();
+  const region = String(req.body?.region || config.region);
+
+  if (!docId) {
+    throw createHttpError(400, 'doc_id 不能为空');
+  }
+
+  if (!chunkType) {
+    throw createHttpError(400, 'chunk_type 不能为空');
+  }
+
+  const target = resolveKnowledgeBaseTarget({
+    collectionName,
+    resourceId,
+    project: inputProject
+  });
+
+  const payload = {
+    doc_id: docId,
+    chunk_type: chunkType
+  };
+
+  if (target.collectionName) {
+    payload.collection_name = target.collectionName;
+    payload.project = target.project;
+  }
+
+  if (target.resourceId) {
+    payload.resource_id = target.resourceId;
+  }
+
+  if (req.body?.pipeline_name !== undefined) {
+    payload.pipeline_name = String(req.body.pipeline_name || '');
+  }
+
+  if (req.body?.content !== undefined) {
+    payload.content = String(req.body.content || '');
+  }
+
+  if (req.body?.chunk_title !== undefined) {
+    payload.chunk_title = String(req.body.chunk_title || '');
+  }
+
+  if (req.body?.question !== undefined) {
+    payload.question = String(req.body.question || '');
+  }
+
+  if (req.body?.fields !== undefined) {
+    payload.fields = req.body.fields;
+  }
+
+  const data = await requestVolcOpenApi(
+    {
+      pathname: '/api/knowledge/point/add',
       method: 'POST',
       region,
       service: 'air',
@@ -1327,6 +1933,196 @@ function parseJsonField(value, defaultValue = undefined) {
   }
 }
 
+async function resolveCustomerServiceCompanyId(pool, requestedCompanyId) {
+  const companyId = String(requestedCompanyId || '').trim();
+  if (companyId) {
+    return companyId;
+  }
+
+  const [listRows] = await pool.execute(
+    `SELECT company_id
+    FROM taobao_customer_service_list
+    WHERE company_id IS NOT NULL AND company_id <> ''
+    GROUP BY company_id
+    ORDER BY MAX(startTime) DESC
+    LIMIT 1`
+  );
+
+  if (Array.isArray(listRows) && listRows[0]?.company_id) {
+    return String(listRows[0].company_id);
+  }
+
+  const [transferRows] = await pool.execute(
+    `SELECT company_id
+    FROM taobao_transfer
+    WHERE company_id IS NOT NULL AND company_id <> ''
+    GROUP BY company_id
+    ORDER BY MAX(created_at) DESC
+    LIMIT 1`
+  );
+
+  if (Array.isArray(transferRows) && transferRows[0]?.company_id) {
+    return String(transferRows[0].company_id);
+  }
+
+  throw createHttpError(404, '未找到可用的 company_id');
+}
+
+function resolveCustomerServiceDateRange(params = {}) {
+  const startTime = String(params.start_time || '').trim();
+  const endTime = String(params.end_time || '').trim();
+
+  if (startTime && endTime) {
+    return { startTime, endTime };
+  }
+
+  const intervalRaw = params.interval;
+  const intervalText = String(intervalRaw || '').trim().toLowerCase();
+  const now = new Date();
+
+  if (intervalText === 'yesterday') {
+    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const date = formatShanghaiDate(yesterday);
+    return {
+      startTime: `${date} 00:00:00`,
+      endTime: `${date} 23:59:59`
+    };
+  }
+
+  if (intervalText === 'today') {
+    const date = formatShanghaiDate(now);
+    return {
+      startTime: `${date} 00:00:00`,
+      endTime: `${date} 23:59:59`
+    };
+  }
+
+  let days = 7;
+  if (typeof intervalRaw === 'number' && Number.isFinite(intervalRaw)) {
+    days = Math.max(Math.floor(intervalRaw), 1);
+  } else if (/^\d+$/.test(intervalText)) {
+    days = Math.max(parseInt(intervalText, 10), 1);
+  } else if (/^\d+days$/.test(intervalText)) {
+    days = Math.max(parseInt(intervalText, 10), 1);
+  }
+
+  const startDate = new Date(now.getTime() - (days - 1) * 24 * 60 * 60 * 1000);
+  return {
+    startTime: `${formatShanghaiDate(startDate)} 00:00:00`,
+    endTime: `${formatShanghaiDate(now)} 23:59:59`
+  };
+}
+
+function inferCustomerServiceMessageSender(item = {}) {
+  const type = String(item.type || '').trim().toLowerCase();
+  if (type === 'image_analyze') {
+    return 'ai';
+  }
+
+  const from = String(item.userNickFrom || '').trim();
+  const fromLower = from.toLowerCase();
+  const to = String(item.userNickTo || '').trim();
+  const toLower = to.toLowerCase();
+  const buyerNick = String(item.buyerNick || '').trim();
+  const sellerNick = String(item.sellerNick || '').trim();
+  const accountNick = String(item.accountNick || '').trim();
+  const psnNickName = String(item.psnNickName || '').trim();
+
+  if (from && buyerNick && from === buyerNick) {
+    return 'buyer';
+  }
+
+  if (to && accountNick && to === accountNick) {
+    return 'buyer';
+  }
+
+  if (from && (from === sellerNick || from === psnNickName || from === accountNick)) {
+    return 'seller';
+  }
+
+  if (buyerNick && fromLower === buyerNick.toLowerCase()) {
+    return 'buyer';
+  }
+
+  if (accountNick && toLower === accountNick.toLowerCase()) {
+    return 'buyer';
+  }
+
+  if (
+    fromLower === 'ai' ||
+    fromLower === 'assistant' ||
+    fromLower.includes('robot') ||
+    fromLower.includes('智能')
+  ) {
+    return 'ai';
+  }
+
+  if (
+    fromLower.includes('旗舰店') ||
+    fromLower.includes('专卖店') ||
+    fromLower.includes('客服') ||
+    fromLower.includes('shop') ||
+    fromLower.includes('seller')
+  ) {
+    return 'seller';
+  }
+
+  return 'buyer';
+}
+
+function isMeaningfulCustomerQuestionMessage(item = {}) {
+  const message = normalizeCustomerServiceMessage(item.msg);
+
+  if (!message) {
+    return false;
+  }
+
+  if (
+    message.startsWith('用户进入聊天对话框') ||
+    message.startsWith('当前用户来自') ||
+    message.startsWith('发送下述商品链接') ||
+    message.startsWith('用户上传的图片分析结果')
+  ) {
+    return false;
+  }
+
+  if (
+    message.startsWith('http://') ||
+    message.startsWith('https://')
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
+function isMeaningfulReplyMessage(item = {}) {
+  const message = normalizeCustomerServiceMessage(item.msg);
+  return Boolean(message);
+}
+
+function normalizeCustomerServiceMessage(value) {
+  return String(value || '').replace(/\s+/g, ' ').trim();
+}
+
+
+function formatShanghaiDate(date) {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  });
+  const parts = formatter.formatToParts(date).reduce((result, item) => {
+    if (item.type !== 'literal') {
+      result[item.type] = item.value;
+    }
+    return result;
+  }, {});
+
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
 function getCredentials() {
   if (!config.accessKeyId || !config.secretKey) {
     throw createHttpError(500, '服务端未配置 VOLC_ACCESS_KEY_ID / VOLC_SECRET_KEY');
@@ -1379,6 +2175,56 @@ function maskSensitiveHeaders(headers) {
 function maskValue(value) {
   if (value.length <= 20) return '***';
   return `${value.slice(0, 24)}...${value.slice(-16)}`;
+}
+
+async function postJsonWithTimeout(url, payload, timeoutMs = 60000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal
+    });
+
+    const text = await response.text();
+    let data = null;
+
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch {
+      data = text;
+    }
+
+    if (!response.ok) {
+      throw new Error(typeof data === 'string' ? data : data?.msg || `HTTP ${response.status}`);
+    }
+
+    return data;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function mapWithConcurrency(items, concurrency, worker) {
+  const limit = Math.max(Number(concurrency || 1), 1);
+  const results = new Array(items.length);
+  let cursor = 0;
+
+  async function consume() {
+    while (cursor < items.length) {
+      const index = cursor;
+      cursor += 1;
+      results[index] = await worker(items[index], index);
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => consume()));
+  return results;
 }
 
 function asyncHandler(handler) {

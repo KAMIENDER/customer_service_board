@@ -7,6 +7,10 @@ import { supabase } from './supabase.js';
 
 // API 基础地址
 const API_BASE_URL = 'http://14.22.86.32:5678/webhook/api';
+const CUSTOMER_SERVICE_PROXY_BASE_URL = normalizeProxyBaseUrl(
+  import.meta.env.VITE_KB_PROXY_BASE_URL || inferDefaultProxyBaseUrl()
+);
+const CUSTOMER_SERVICE_COMPANY_ID = 'fb21ef63-7587-44d3-860a-5a259b5115f5';
 
 const FILTER_PARAMS_STORAGE_KEY = 'csb:filterParams';
 const ALL_NUM_CACHE_STORAGE_KEY = 'csb:allNumCache';
@@ -96,6 +100,23 @@ async function getAuthToken() {
   return session?.access_token || null;
 }
 
+function normalizeProxyBaseUrl(value) {
+  const url = String(value || '').trim();
+  if (!url) return '';
+  return url.endsWith('/') ? url.slice(0, -1) : url;
+}
+
+function inferDefaultProxyBaseUrl() {
+  if (typeof window === 'undefined') return '';
+
+  const { protocol, hostname, port, origin } = window.location;
+  if (port === '3000') {
+    return `${protocol}//${hostname}:38888/api`;
+  }
+
+  return `${origin}/api`;
+}
+
 /**
  * 通用请求方法
  */
@@ -132,6 +153,31 @@ async function request(endpoint, options = {}) {
   }
   
   return response.json();
+}
+
+async function requestCustomerServiceProxy(endpoint, options = {}) {
+  if (!CUSTOMER_SERVICE_PROXY_BASE_URL) {
+    throw new Error('客服代理未配置，请设置 VITE_KB_PROXY_BASE_URL');
+  }
+
+  const response = await fetch(`${CUSTOMER_SERVICE_PROXY_BASE_URL}${endpoint}`, options);
+  const text = await response.text();
+  let data = null;
+
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = text;
+  }
+
+  if (!response.ok) {
+    const message = typeof data === 'string'
+      ? data
+      : data?.message || `HTTP ${response.status}`;
+    throw new Error(message);
+  }
+
+  return data;
 }
 
 /**
@@ -204,11 +250,138 @@ export async function getConversationDetail(conversationId) {
   });
 }
 
+export async function getTransferSummaryFromDb(params = {}) {
+  return requestCustomerServiceProxy('/customer-service/transfer-summary', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      company_id: CUSTOMER_SERVICE_COMPANY_ID,
+      ...params
+    })
+  });
+}
+
+export async function getCustomerServiceCoverageSummaryFromDb(params = {}) {
+  return requestCustomerServiceProxy('/customer-service/coverage-summary', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      company_id: CUSTOMER_SERVICE_COMPANY_ID,
+      ...params
+    })
+  });
+}
+
+export async function getCustomerServiceCoverageBreakdownFromDb(params = {}) {
+  return requestCustomerServiceProxy('/customer-service/coverage-breakdown', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      company_id: CUSTOMER_SERVICE_COMPANY_ID,
+      ...params
+    })
+  });
+}
+
+export async function getCustomerServiceCategoryDetailFromDb(params = {}) {
+  return requestCustomerServiceProxy('/customer-service/category-detail', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      company_id: CUSTOMER_SERVICE_COMPANY_ID,
+      ...params
+    })
+  });
+}
+
+export async function runCustomerServiceCoverageBacktest(params = {}) {
+  return requestCustomerServiceProxy('/customer-service/coverage-backtest', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      company_id: CUSTOMER_SERVICE_COMPANY_ID,
+      ...params
+    })
+  });
+}
+
+export async function getTransferQuestionsFromDb(params = {}) {
+  return requestCustomerServiceProxy('/customer-service/questions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      company_id: CUSTOMER_SERVICE_COMPANY_ID,
+      ...params
+    })
+  });
+}
+
+export async function getCustomerServiceDashboardMetricsFromDb(params = {}) {
+  return requestCustomerServiceProxy('/customer-service/dashboard-metrics', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      company_id: CUSTOMER_SERVICE_COMPANY_ID,
+      ...params
+    })
+  });
+}
+
+export async function getCustomerServiceTokenCostFromDb(params = {}) {
+  return requestCustomerServiceProxy('/customer-service/token-cost', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      company_id: CUSTOMER_SERVICE_COMPANY_ID,
+      ...params
+    })
+  });
+}
+
+export async function getCustomerServiceConversationDetailFromDb(conversationId, params = {}) {
+  return requestCustomerServiceProxy('/customer-service/detail', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      company_id: CUSTOMER_SERVICE_COMPANY_ID,
+      conversation_id: conversationId,
+      ...params
+    })
+  });
+}
+
 /**
  * 导出 API 服务
  */
 export const apiService = {
   getQuestions,
   getConversationDetail,
-  getTokenCost
+  getTokenCost,
+  getTransferSummaryFromDb,
+  getCustomerServiceCoverageSummaryFromDb,
+  getCustomerServiceCoverageBreakdownFromDb,
+  getCustomerServiceCategoryDetailFromDb,
+  runCustomerServiceCoverageBacktest,
+  getTransferQuestionsFromDb,
+  getCustomerServiceDashboardMetricsFromDb,
+  getCustomerServiceTokenCostFromDb,
+  getCustomerServiceConversationDetailFromDb
 };

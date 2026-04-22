@@ -4,7 +4,7 @@
 
 import { MockData } from './mock-data.js';
 import { initAuth } from './auth.js';
-import { getAllNumCached, loadFilterParams, saveFilterParams } from './api.js';
+import { getTransferSummaryFromDb, loadFilterParams, saveFilterParams } from './api.js';
 import '../css/style.css';
 
 let currentFilterParams = { interval: 7 };
@@ -31,7 +31,7 @@ async function initHandoverBoard(params = currentFilterParams) {
   showLoadingState();
 
   try {
-    const response = await getAllNumCached(params);
+    const response = await getTransferSummaryFromDb(params);
     if (response && response.code === 0 && response.data) {
       const data = response.data;
       updateSummary(data);

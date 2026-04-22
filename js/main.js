@@ -6,7 +6,14 @@
 import { Chart, registerables } from 'chart.js';
 import { MockData } from './mock-data.js';
 import { initAuth } from './auth.js';
-import { getAllNumCached, getTokenCost, loadFilterParams, saveFilterParams } from './api.js';
+import {
+  getCustomerServiceDashboardMetricsFromDb,
+  getCustomerServiceTokenCostFromDb,
+  getAllNumCached,
+  getTransferSummaryFromDb,
+  loadFilterParams,
+  saveFilterParams
+} from './api.js';
 import '../css/style.css';
 
 Chart.register(...registerables);
@@ -31,35 +38,65 @@ async function refreshData(params = currentFilterParams) {
   showLoadingState();
 
   let apiData = null;
+  let transferSummaryData = null;
+  let dashboardMetricsData = null;
   try {
-    const response = await getAllNumCached(params);
-    if (response && response.code === 0 && response.data) {
-      apiData = response.data;
+    const [allNumResponse, transferSummaryResponse, dashboardMetricsResponse] = await Promise.allSettled([
+      getAllNumCached(params),
+      getTransferSummaryFromDb(params),
+      getCustomerServiceDashboardMetricsFromDb(params)
+    ]);
+
+    if (allNumResponse.status === 'fulfilled') {
+      const response = allNumResponse.value;
+      if (response && response.code === 0 && response.data) {
+        apiData = response.data;
+      }
+    }
+
+    if (transferSummaryResponse.status === 'fulfilled') {
+      const response = transferSummaryResponse.value;
+      if (response && response.code === 0 && response.data) {
+        transferSummaryData = response.data;
+      }
+    }
+
+    if (dashboardMetricsResponse.status === 'fulfilled') {
+      const response = dashboardMetricsResponse.value;
+      if (response && response.code === 0 && response.data) {
+        dashboardMetricsData = response.data;
+      }
     }
   } catch (error) {
     console.warn('获取首页接待效率数据失败，使用默认推导数据:', error?.message || error);
   }
 
-  const dashboardData = buildDashboardData(apiData);
+  const dashboardData = buildDashboardData(apiData, transferSummaryData, dashboardMetricsData);
   renderDashboard(dashboardData);
   hideLoadingState();
 }
 
-function buildDashboardData(apiData) {
+function buildDashboardData(apiData, transferSummaryData, dashboardMetricsData) {
   const defaults = MockData.dashboardWorkbookDefaults;
   const assumptions = MockData.dashboardWorkbookAssumptions;
+  const realConversationCount = pickNumber(transferSummaryData?.all_num, null);
+  const realTransferCount = pickNumber(transferSummaryData?.transfer_num, null);
+  const realNoAnswerTransferCount = pickNumber(transferSummaryData?.can_not_answer_and_transfer_num, null);
 
   const aiReceptionCount = clamp(
-    pickNumber(apiData?.all_num, defaults.aiReceptionCount),
+    pickNumber(apiData?.all_num, pickNumber(realConversationCount, defaults.aiReceptionCount)),
     0
   );
   const transferCount = clamp(
-    pickNumber(apiData?.transfer_num, defaults.transferCount),
+    pickNumber(apiData?.transfer_num, pickNumber(realTransferCount, defaults.transferCount)),
     0,
     aiReceptionCount
   );
   const noAnswerTransferCount = clamp(
-    pickNumber(apiData?.can_not_answer_and_transfer_num, defaults.noAnswerTransferCount),
+    pickNumber(
+      apiData?.can_not_answer_and_transfer_num,
+      pickNumber(realNoAnswerTransferCount, defaults.noAnswerTransferCount)
+    ),
     0,
     transferCount
   );
@@ -70,67 +107,112 @@ function buildDashboardData(apiData) {
   );
 
   const storeTotalReception = Math.max(
+    pickNumber(dashboardMetricsData?.total_reception_count, pickNumber(realConversationCount, null)) || 0,
     aiReceptionCount,
     Math.round(aiReceptionCount / (aiCoverageRateRaw || defaults.aiCoverageRate || 1))
   );
-  const autoReceptionCount = Math.max(aiReceptionCount - transferCount, 0);
-  const assistReceptionCount = transferCount;
+  const autoReceptionCount = clamp(
+    pickNumber(dashboardMetricsData?.auto_reception_count, aiReceptionCount - transferCount),
+    0,
+    storeTotalReception
+  );
+  const assistReceptionCount = clamp(
+    pickNumber(dashboardMetricsData?.assist_reception_count, transferCount),
+    0,
+    storeTotalReception
+  );
+
+  const shortConversationCount = clamp(
+    pickNumber(
+      dashboardMetricsData?.auto_short?.reception_count,
+      apiData?.['3_question_num'],
+      defaults.threeSentenceConversationCount
+    ),
+    0,
+    autoReceptionCount
+  );
+  const longConversationCount = clamp(
+    pickNumber(
+      dashboardMetricsData?.auto_long?.reception_count,
+      autoReceptionCount - shortConversationCount
+    ),
+    0,
+    autoReceptionCount
+  );
 
   const inquiryCount = clamp(
-    pickNumber(apiData?.no_trade_num, defaults.inquiryCount),
+    pickNumber(
+      dashboardMetricsData?.auto_short?.inquiry_count,
+      0
+    ) + pickNumber(
+      dashboardMetricsData?.auto_long?.inquiry_count,
+      pickNumber(apiData?.no_trade_num, defaults.inquiryCount)
+    ),
     0,
     autoReceptionCount
   );
   const paymentCount = clamp(
-    pickNumber(apiData?.no_trade_and_success, defaults.paymentCount),
+    pickNumber(dashboardMetricsData?.auto_short?.payment_count, 0) +
+      pickNumber(
+        dashboardMetricsData?.auto_long?.payment_count,
+        pickNumber(apiData?.no_trade_and_success, defaults.paymentCount)
+      ),
     0,
-    inquiryCount
+    inquiryCount || autoReceptionCount
   );
 
-  const shortConversationCount = clamp(
-    pickNumber(apiData?.['3_question_num'], defaults.threeSentenceConversationCount),
-    0,
-    autoReceptionCount
-  );
-  const longConversationCount = Math.max(autoReceptionCount - shortConversationCount, 0);
-
-  let shortInquiryCount = clamp(
-    Math.round(inquiryCount * assumptions.autoShortInquiryShare),
+  const shortInquiryCount = clamp(
+    pickNumber(
+      dashboardMetricsData?.auto_short?.inquiry_count,
+      Math.round(inquiryCount * assumptions.autoShortInquiryShare)
+    ),
     0,
     shortConversationCount
   );
-  let longInquiryCount = Math.min(
-    longConversationCount,
-    Math.max(inquiryCount - shortInquiryCount, 0)
+  const longInquiryCount = clamp(
+    pickNumber(
+      dashboardMetricsData?.auto_long?.inquiry_count,
+      Math.max(inquiryCount - shortInquiryCount, 0)
+    ),
+    0,
+    longConversationCount
   );
-
-  const unresolvedInquiryGap = inquiryCount - shortInquiryCount - longInquiryCount;
-  if (unresolvedInquiryGap > 0) {
-    longInquiryCount = Math.min(longConversationCount, longInquiryCount + unresolvedInquiryGap);
-  }
 
   const shortPaymentCount = clamp(
-    Math.round(paymentCount * assumptions.autoShortPaymentShare),
+    pickNumber(
+      dashboardMetricsData?.auto_short?.payment_count,
+      Math.round(paymentCount * assumptions.autoShortPaymentShare)
+    ),
     0,
-    shortInquiryCount
+    shortInquiryCount || shortConversationCount
   );
-  const longPaymentCount = Math.min(
-    longInquiryCount,
-    Math.max(paymentCount - shortPaymentCount, 0)
+  const longPaymentCount = clamp(
+    pickNumber(
+      dashboardMetricsData?.auto_long?.payment_count,
+      Math.max(paymentCount - shortPaymentCount, 0)
+    ),
+    0,
+    longInquiryCount || longConversationCount
   );
 
   const shortOrderAmount = shortPaymentCount * assumptions.autoShortAverageOrderValue;
   const longOrderAmount = longPaymentCount * assumptions.autoLongAverageOrderValue;
 
   const assistInquiryCount = clamp(
-    Math.round(assistReceptionCount * assumptions.assistInquiryRate),
+    pickNumber(
+      dashboardMetricsData?.assist?.inquiry_count,
+      Math.round(assistReceptionCount * assumptions.assistInquiryRate)
+    ),
     0,
     assistReceptionCount
   );
   const assistPaymentCount = clamp(
-    Math.round(assistInquiryCount * assumptions.assistPaymentRate),
+    pickNumber(
+      dashboardMetricsData?.assist?.payment_count,
+      Math.round(assistInquiryCount * assumptions.assistPaymentRate)
+    ),
     0,
-    assistInquiryCount
+    assistInquiryCount || assistReceptionCount
   );
   const assistOrderAmount = assistPaymentCount * assumptions.assistAverageOrderValue;
 
@@ -158,28 +240,23 @@ function buildDashboardData(apiData) {
         label: '用户回话3句话以内会话',
         receptionCount: shortConversationCount,
         inquiryCount: shortInquiryCount,
-        paymentCount: shortPaymentCount,
-        orderAmount: shortOrderAmount
+        paymentCount: shortPaymentCount
       },
       {
         label: '用户回话3句话以上会话',
         receptionCount: longConversationCount,
         inquiryCount: longInquiryCount,
-        paymentCount: longPaymentCount,
-        orderAmount: longOrderAmount
+        paymentCount: longPaymentCount
       }
     ].map(item => ({
       ...item,
-      conversionRate: percentage(item.paymentCount, item.inquiryCount),
-      averageOrderValue: item.paymentCount > 0 ? item.orderAmount / item.paymentCount : 0
+      conversionRate: percentage(item.paymentCount, item.inquiryCount)
     })),
     assist: {
       receptionCount: assistReceptionCount,
       inquiryCount: assistInquiryCount,
       paymentCount: assistPaymentCount,
-      orderAmount: assistOrderAmount,
-      conversionRate: percentage(assistPaymentCount, assistInquiryCount),
-      averageOrderValue: assistPaymentCount > 0 ? assistOrderAmount / assistPaymentCount : 0
+      conversionRate: percentage(assistPaymentCount, assistInquiryCount)
     },
     scene: {
       totalTransferCount: transferCount,
@@ -227,9 +304,7 @@ function renderAutoEfficiencyTable(rows) {
       <td>${formatNumber(row.receptionCount)}</td>
       <td>${formatNumber(row.inquiryCount)}</td>
       <td>${formatNumber(row.paymentCount)}</td>
-      <td>${formatCurrency(row.orderAmount)}</td>
       <td>${formatPercent(row.conversionRate)}%</td>
-      <td>${formatCurrency(row.averageOrderValue)}</td>
     </tr>
   `).join('');
 }
@@ -238,9 +313,7 @@ function renderAssistStats(assist) {
   setText('assist-stat-reception', formatNumber(assist.receptionCount));
   setText('assist-stat-inquiry', formatNumber(assist.inquiryCount));
   setText('assist-stat-order-count', formatNumber(assist.paymentCount));
-  setText('assist-stat-order-amount', formatCurrency(assist.orderAmount));
   setText('assist-stat-conversion-rate', formatPercent(assist.conversionRate));
-  setText('assist-stat-aov', formatCurrency(assist.averageOrderValue));
 }
 
 function renderSceneMatrix(scene) {
@@ -280,9 +353,7 @@ function showLoadingState() {
     'assist-stat-reception',
     'assist-stat-inquiry',
     'assist-stat-order-count',
-    'assist-stat-order-amount',
     'assist-stat-conversion-rate',
-    'assist-stat-aov',
     'scene-total-transfer',
     'scene-no-answer-transfer'
   ].forEach(id => {
@@ -294,7 +365,7 @@ function showLoadingState() {
 
   const autoTbody = document.getElementById('auto-efficiency-table-body');
   if (autoTbody) {
-    autoTbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#9CA3AF;">加载中...</td></tr>';
+    autoTbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#9CA3AF;">加载中...</td></tr>';
   }
 
   const headerRow = document.getElementById('scene-header-row');
@@ -528,7 +599,7 @@ async function initTokenCostChart() {
     const endTimeUnix = now.getTime();
     const startTimeUnix = endTimeUnix - (31 * 24 * 60 * 60 * 1000);
 
-    const response = await getTokenCost({
+    const response = await getCustomerServiceTokenCostFromDb({
       start_time_unix_time: startTimeUnix,
       end_time_unix_time: endTimeUnix
     });
@@ -538,29 +609,19 @@ async function initTokenCostChart() {
     }
 
     const records = [...response.data.records].sort((a, b) => a.unix_timestamp - b.unix_timestamp);
-    const dailyCosts = [];
-    const labels = [];
+    const dailySums = records.map(item => Number(item.token_cost || 0));
+    const chartData = dailySums.map((value, index) => {
+      if (index === 0) {
+        return value;
+      }
 
-    for (let i = 1; i < records.length; i++) {
-      const current = records[i];
-      const previous = records[i - 1];
-      dailyCosts.push(Math.max(0, current.token_cost - previous.token_cost));
-
-      const date = new Date(current.unix_timestamp);
-      labels.push(`${date.getMonth() + 1}/${date.getDate()}`);
-    }
-
-    const chartData = dailyCosts.length > 0 ? dailyCosts : records.map(item => item.token_cost);
-    const chartLabels = labels.length > 0
-      ? labels
-      : records.map(item => {
-          const date = new Date(item.unix_timestamp);
-          return `${date.getMonth() + 1}/${date.getDate()}`;
-        });
-
-    const totalCost = dailyCosts.length > 0
-      ? records[records.length - 1].token_cost - records[0].token_cost
-      : chartData.reduce((sum, value) => sum + value, 0);
+      return value - dailySums[index - 1];
+    });
+    const chartLabels = records.map(item => {
+      const date = new Date(item.unix_timestamp);
+      return `${date.getMonth() + 1}/${date.getDate()}`;
+    });
+    const totalCost = chartData.reduce((sum, value) => sum + value, 0);
 
     if (totalEl) {
       totalEl.textContent = Math.max(0, totalCost).toLocaleString('zh-CN');

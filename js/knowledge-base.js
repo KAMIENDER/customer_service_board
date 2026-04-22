@@ -5,6 +5,7 @@
 
 import { initAuth } from './auth.js';
 import {
+  addKnowledgeBaseChunk,
   deleteKnowledgeBaseFile,
   getKnowledgeBaseChunkInfo,
   getKnowledgeBaseFileInfo,
@@ -105,9 +106,11 @@ function bindEvents() {
   const chunkModal = document.getElementById('kb-chunk-modal');
   const chunkClose = document.getElementById('kb-chunk-close');
   const chunkList = document.getElementById('kb-chunk-list');
+  const chunkAdd = document.getElementById('kb-chunk-add');
   const chunkRefresh = document.getElementById('kb-chunk-refresh');
   const chunkSave = document.getElementById('kb-chunk-save');
   const chunkCancel = document.getElementById('kb-chunk-cancel');
+  const chunkType = document.getElementById('kb-chunk-type');
   const chunkContent = document.getElementById('kb-chunk-content');
   const chunkTitle = document.getElementById('kb-chunk-title');
   const chunkQuestion = document.getElementById('kb-chunk-question');
@@ -169,8 +172,13 @@ function bindEvents() {
     chunkList.addEventListener('click', event => {
       const row = event.target.closest('[data-point-id]');
       if (!row) return;
+      chunkModalState.isCreating = false;
       handleChunkSelect(row.dataset.pointId || '');
     });
+  }
+
+  if (chunkAdd) {
+    chunkAdd.addEventListener('click', startChunkCreate);
   }
 
   if (chunkRefresh) {
@@ -184,7 +192,7 @@ function bindEvents() {
   [chunkContent, chunkTitle, chunkQuestion].forEach(input => {
     if (!input) return;
     input.addEventListener('input', () => {
-      if (!chunkModalState.selectedChunk) return;
+      if (!chunkModalState.selectedChunk && !chunkModalState.isCreating) return;
       chunkModalState.isDirty = true;
       if (input.tagName === 'TEXTAREA') {
         autoResizeTextarea(input);
@@ -219,6 +227,15 @@ function bindEvents() {
       appendChunkFieldRow({ field_name: '', field_value: '' });
       syncFieldTip();
       chunkModalState.isDirty = true;
+      renderChunkModalHeader();
+    });
+  }
+
+  if (chunkType) {
+    chunkType.addEventListener('change', event => {
+      chunkModalState.selectedChunkType = String(event.target.value || 'text');
+      chunkModalState.isDirty = true;
+      syncChunkTypeUI();
       renderChunkModalHeader();
     });
   }
@@ -582,7 +599,7 @@ async function loadSelectedChunkDetail(pointId) {
   }
 }
 
-async function refreshChunkList() {
+async function refreshChunkList(preferredPointId = '') {
   if (!chunkModalState.docId) {
     return;
   }
@@ -596,7 +613,9 @@ async function refreshChunkList() {
     chunkModalState.loading = false;
     chunkModalState.chunks = result.records;
     chunkModalState.totalNum = result.totalNum;
-    if (chunkModalState.selectedPointId) {
+    if (preferredPointId) {
+      chunkModalState.selectedPointId = preferredPointId;
+    } else if (chunkModalState.selectedPointId) {
       const exists = result.records.some(item => String(item.point_id || '') === chunkModalState.selectedPointId);
       if (!exists) {
         chunkModalState.selectedPointId = result.records[0] ? String(result.records[0].point_id || '') : '';
@@ -617,34 +636,55 @@ async function refreshChunkList() {
 }
 
 async function handleChunkSave() {
-  if (!chunkModalState.selectedPointId || !chunkModalState.selectedChunk) {
+  if (!chunkModalState.isCreating && (!chunkModalState.selectedPointId || !chunkModalState.selectedChunk)) {
     return;
   }
 
   const contentInput = document.getElementById('kb-chunk-content');
   const titleInput = document.getElementById('kb-chunk-title');
   const questionInput = document.getElementById('kb-chunk-question');
+  const typeInput = document.getElementById('kb-chunk-type');
   const fields = collectChunkFields();
+  const chunkType = String(typeInput?.value || chunkModalState.selectedChunkType || inferDefaultChunkType());
 
   chunkModalState.saving = true;
   chunkModalState.error = '';
   renderChunkModal();
 
   try {
-    await updateKnowledgeBaseChunk({
-      point_id: chunkModalState.selectedPointId,
-      chunk_title: titleInput?.value || '',
-      question: questionInput?.value || '',
-      content: contentInput?.value || '',
-      ...(fields.length > 0 ? { fields } : {})
-    });
+    if (chunkModalState.isCreating) {
+      const result = await addKnowledgeBaseChunk(buildChunkPayload({
+        mode: 'create',
+        docId: chunkModalState.docId,
+        chunkType,
+        title: titleInput?.value || '',
+        question: questionInput?.value || '',
+        content: contentInput?.value || '',
+        fields
+      }));
+      const createdPointId = String(result?.data?.data?.point_id || '');
+      chunkModalState.isCreating = false;
+      setFeedback('kb-upload-feedback', '新切片已创建', 'success');
+      await refreshChunkList(createdPointId);
+      if (createdPointId) {
+        await loadSelectedChunkDetail(createdPointId);
+      }
+    } else {
+      await updateKnowledgeBaseChunk({
+        point_id: chunkModalState.selectedPointId,
+        chunk_title: titleInput?.value || '',
+        question: questionInput?.value || '',
+        content: contentInput?.value || '',
+        ...(fields.length > 0 ? { fields } : {})
+      });
 
-    setFeedback('kb-upload-feedback', '切片内容已提交更新', 'success');
-    await loadSelectedChunkDetail(chunkModalState.selectedPointId);
-    await refreshChunkList();
+      setFeedback('kb-upload-feedback', '切片内容已提交更新', 'success');
+      await loadSelectedChunkDetail(chunkModalState.selectedPointId);
+      await refreshChunkList(chunkModalState.selectedPointId);
+    }
   } catch (error) {
     chunkModalState.saving = false;
-    chunkModalState.error = error.message || '切片更新失败';
+    chunkModalState.error = error.message || (chunkModalState.isCreating ? '切片新增失败' : '切片更新失败');
     renderChunkModal();
   }
 }
@@ -674,8 +714,8 @@ function renderChunkModalHeader() {
 
   const saveButton = document.getElementById('kb-chunk-save');
   if (saveButton) {
-    saveButton.disabled = chunkModalState.saving || !chunkModalState.selectedPointId;
-    saveButton.textContent = chunkModalState.saving ? '保存中...' : '保存修改';
+    saveButton.disabled = chunkModalState.saving || (!chunkModalState.isCreating && !chunkModalState.selectedPointId);
+    saveButton.textContent = chunkModalState.saving ? '保存中...' : (chunkModalState.isCreating ? '新增切片' : '保存修改');
   }
 }
 
@@ -689,7 +729,7 @@ function renderChunkList() {
   }
 
   if (chunkModalState.chunks.length === 0) {
-    container.innerHTML = '<div class="kb-chunk-empty">当前文档暂无切片</div>';
+    container.innerHTML = '<div class="kb-chunk-empty">当前文档暂无切片，可点击“新增切片”创建第一条</div>';
     return;
   }
 
@@ -724,6 +764,12 @@ function renderChunkDetail() {
 
   detailPanel.classList.remove('loading');
 
+  if (chunkModalState.isCreating) {
+    populateChunkForm(null);
+    syncChunkTypeUI();
+    return;
+  }
+
   if (!detail) {
     populateChunkForm(null);
     return;
@@ -733,6 +779,7 @@ function renderChunkDetail() {
 }
 
 function populateChunkForm(detail) {
+  const typeInput = document.getElementById('kb-chunk-type');
   const titleInput = document.getElementById('kb-chunk-title');
   const questionInput = document.getElementById('kb-chunk-question');
   const contentInput = document.getElementById('kb-chunk-content');
@@ -740,15 +787,22 @@ function populateChunkForm(detail) {
   const metaEl = document.getElementById('kb-chunk-meta');
 
   if (!detail) {
+    if (typeInput) typeInput.value = chunkModalState.selectedChunkType || inferDefaultChunkType();
     if (titleInput) titleInput.value = '';
     if (questionInput) questionInput.value = '';
     if (contentInput) contentInput.value = '';
     if (fieldsList) fieldsList.innerHTML = '';
-    if (metaEl) metaEl.textContent = '';
+    if (metaEl) {
+      metaEl.textContent = chunkModalState.isCreating
+        ? `新增模式  |  类型：${typeInput?.value || chunkModalState.selectedChunkType || 'text'}`
+        : '';
+    }
+    syncChunkTypeUI();
     syncFieldTip();
     return;
   }
 
+  if (typeInput) typeInput.value = String(detail.chunk_type || inferDefaultChunkType());
   if (titleInput) titleInput.value = String(detail.chunk_title || '');
   if (questionInput) questionInput.value = normalizeChunkQuestion(detail);
   if (contentInput) {
@@ -771,6 +825,7 @@ function populateChunkForm(detail) {
       detail.chunk_status ? `状态：${detail.chunk_status}` : ''
     ].filter(Boolean).join('  |  ');
   }
+  syncChunkTypeUI();
 }
 
 function createChunkModalState() {
@@ -784,10 +839,111 @@ function createChunkModalState() {
     detailLoading: false,
     selectedPointId: '',
     selectedChunk: null,
+    selectedChunkType: 'text',
+    isCreating: false,
     saving: false,
     isDirty: false,
     error: ''
   };
+}
+
+function startChunkCreate() {
+  chunkModalState.isCreating = true;
+  chunkModalState.selectedPointId = '';
+  chunkModalState.selectedChunk = null;
+  chunkModalState.detailLoading = false;
+  chunkModalState.error = '';
+  chunkModalState.selectedChunkType = inferDefaultChunkType();
+  renderChunkModal();
+}
+
+function inferDefaultChunkType() {
+  const value = String(chunkModalState.selectedChunk?.chunk_type || chunkModalState.chunks[0]?.chunk_type || '').trim();
+  if (value === 'structured' || value === 'faq' || value === 'text') {
+    return value;
+  }
+  const docType = String(records.find(item => item.doc_id === chunkModalState.docId)?.doc_type || '').toLowerCase();
+  if (docType === 'xlsx' || docType === 'xls' || docType === 'csv') {
+    return 'structured';
+  }
+  return 'text';
+}
+
+function syncChunkTypeUI() {
+  const typeInput = document.getElementById('kb-chunk-type');
+  const titleInput = document.getElementById('kb-chunk-title');
+  const questionInput = document.getElementById('kb-chunk-question');
+  const contentInput = document.getElementById('kb-chunk-content');
+  const fieldsSection = document.getElementById('kb-chunk-fields-section');
+  const currentType = String(typeInput?.value || chunkModalState.selectedChunkType || inferDefaultChunkType());
+
+  if (typeInput) {
+    typeInput.disabled = !chunkModalState.isCreating;
+  }
+
+  if (questionInput) {
+    questionInput.disabled = currentType !== 'faq';
+    questionInput.placeholder = currentType === 'faq' ? 'FAQ 切片需要填写问题问法' : '仅 FAQ 切片需要填写问题问法';
+  }
+
+  if (contentInput) {
+    contentInput.placeholder = currentType === 'structured'
+      ? '结构化切片主要由下方字段生成，可按需补充说明'
+      : '请输入切片内容';
+  }
+
+  if (fieldsSection) {
+    fieldsSection.style.display = currentType === 'structured' ? '' : 'none';
+  }
+
+  if (titleInput) {
+    titleInput.placeholder = currentType === 'text'
+      ? '文本切片可按需补充标题'
+      : '如接口返回为空，可按需补充标题';
+  }
+}
+
+function buildChunkPayload({ mode, docId, chunkType, title, question, content, fields }) {
+  const payload = {
+    chunk_type: chunkType
+  };
+
+  if (mode === 'create') {
+    if (!docId) {
+      throw new Error('doc_id 不能为空');
+    }
+    payload.doc_id = docId;
+  }
+
+  if (title.trim()) {
+    payload.chunk_title = title.trim();
+  }
+
+  if (chunkType === 'structured') {
+    if (!fields.length) {
+      throw new Error('结构化切片至少需要填写 1 个字段');
+    }
+    payload.fields = fields;
+    return payload;
+  }
+
+  if (chunkType === 'faq') {
+    if (!question.trim()) {
+      throw new Error('FAQ 切片需要填写问题问法');
+    }
+    if (!content.trim()) {
+      throw new Error('FAQ 切片需要填写切片内容');
+    }
+    payload.question = question.trim();
+    payload.content = content.trim();
+    return payload;
+  }
+
+  if (!content.trim()) {
+    throw new Error('文本切片需要填写切片内容');
+  }
+  payload.content = content.trim();
+  return payload;
 }
 
 async function loadInitialRecords() {

@@ -45,14 +45,6 @@
             <span class="nav-item-icon">📚</span>
             <span>知识库管理</span>
           </a>
-          <a href="#" class="nav-item">
-            <span class="nav-item-icon">⚙️</span>
-            <span>规则引擎</span>
-          </a>
-          <a href="#" class="nav-item">
-            <span class="nav-item-icon">📜</span>
-            <span>训练历史</span>
-          </a>
         </div>
       </nav>
 
@@ -182,7 +174,10 @@
         <aside class="kb-chunk-sidebar">
           <div class="kb-chunk-toolbar">
             <span class="kb-chunk-toolbar-title">切片列表</span>
-            <button type="button" class="btn-outline" id="kb-chunk-refresh">刷新</button>
+            <div class="kb-chunk-toolbar-actions">
+              <button type="button" class="btn-outline" id="kb-chunk-add">新增切片</button>
+              <button type="button" class="btn-outline" id="kb-chunk-refresh">刷新</button>
+            </div>
           </div>
           <div class="kb-chunk-list" id="kb-chunk-list"></div>
         </aside>
@@ -193,6 +188,14 @@
             <div class="kb-chunk-form-meta" id="kb-chunk-meta"></div>
           </div>
           <div class="kb-chunk-form-grid">
+            <div class="form-group">
+              <label class="form-label">切片类型</label>
+              <select id="kb-chunk-type" class="form-input">
+                <option value="text">文本</option>
+                <option value="faq">FAQ</option>
+                <option value="structured">结构化</option>
+              </select>
+            </div>
             <div class="form-group">
               <label class="form-label">切片标题</label>
               <input id="kb-chunk-title" class="form-input" placeholder="如接口返回为空，可按需补充标题">

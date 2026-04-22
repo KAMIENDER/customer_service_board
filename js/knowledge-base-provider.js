@@ -99,6 +99,16 @@ export async function getKnowledgeBaseChunkInfo(payload = {}) {
   return normalizeChunkInfoResponse(data);
 }
 
+export async function addKnowledgeBaseChunk(payload = {}) {
+  return await requestProxy('/chunks/add', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(payload)
+  });
+}
+
 export async function updateKnowledgeBaseChunk(payload = {}) {
   return await requestProxy('/chunks/update', {
     method: 'POST',

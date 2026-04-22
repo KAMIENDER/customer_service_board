@@ -45,14 +45,6 @@
             <span class="nav-item-icon">📚</span>
             <span>知识库管理</span>
           </a>
-          <a href="#" class="nav-item">
-            <span class="nav-item-icon">⚙️</span>
-            <span>规则引擎</span>
-          </a>
-          <a href="#" class="nav-item">
-            <span class="nav-item-icon">📜</span>
-            <span>训练历史</span>
-          </a>
         </div>
       </nav>
       
@@ -116,7 +108,7 @@
         <!-- 页面标题 -->
         <div class="page-header">
           <h2 class="page-title">问题覆盖与回复内容</h2>
-          <p class="page-subtitle">分析咨询问题的覆盖率，优化话术和回复内容，提升AI回答质量</p>
+          <p class="page-subtitle">分析用户提问的覆盖率，优化话术和回复内容，提升AI回答质量</p>
         </div>
         
         <!-- 覆盖率统计卡片 -->
@@ -126,7 +118,7 @@
               <div class="stat-icon blue">❓</div>
               <span class="stat-change up">+8.2%</span>
             </div>
-            <div class="stat-label">咨询问题总数</div>
+            <div class="stat-label">用户问题总数</div>
             <div class="stat-value" id="stat-total-questions">0</div>
           </div>
           
@@ -135,7 +127,7 @@
               <div class="stat-icon green">✅</div>
               <span class="stat-change up">+10.5%</span>
             </div>
-            <div class="stat-label">已回复问题数</div>
+            <div class="stat-label">已回复问题总数</div>
             <div class="stat-value" id="stat-answered">0</div>
           </div>
           
@@ -152,31 +144,8 @@
         <div class="table-container" style="margin-top: 24px;">
           <div class="table-header">
             <div>
-              <h3 class="table-title">综合问题数</h3>
-              <p class="table-subtitle">按售前 / 售后拆分咨询问题总数、已回复问题总数和已回复问题覆盖率</p>
-            </div>
-          </div>
-
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>问题类型</th>
-                <th>咨询问题总数</th>
-                <th>已回复问题总数</th>
-                <th>已回复问题覆盖率</th>
-              </tr>
-            </thead>
-            <tbody id="coverage-summary-body">
-              <!-- 动态生成 -->
-            </tbody>
-          </table>
-        </div>
-
-        <div class="table-container" style="margin-top: 24px;">
-          <div class="table-header">
-            <div>
               <h3 class="table-title">通用问法</h3>
-              <p class="table-subtitle">按场景名称拆分咨询次数、机器人回复数、回复率和未回复问题数，并支持查看明细</p>
+              <p class="table-subtitle">按场景名称拆分用户问题数、已回复问题数、回复率和未回复问题数，并支持查看明细</p>
             </div>
           </div>
 
@@ -186,9 +155,9 @@
                 <tr>
                   <th>场景名称</th>
                   <th>细分场景</th>
-                  <th>咨询次数</th>
-                  <th>机器人回复数</th>
-                  <th>机器人回复率</th>
+                  <th>用户问题数</th>
+                  <th>已回复问题数</th>
+                  <th>问题回复率</th>
                   <th>未回复问题数</th>
                   <th>操作</th>
                 </tr>
@@ -204,7 +173,7 @@
           <div class="table-header">
             <div>
               <h3 class="table-title">商品问法</h3>
-              <p class="table-subtitle">按商品名称和细分场景查看咨询次数、回复数、回复率和未回复问题数</p>
+              <p class="table-subtitle">按商品名称和细分场景查看用户问题数、已回复问题数、回复率和未回复问题数</p>
             </div>
           </div>
 
@@ -214,9 +183,9 @@
                 <tr>
                   <th>商品名称</th>
                   <th>细分场景</th>
-                  <th>咨询次数</th>
-                  <th>机器人回复数</th>
-                  <th>机器人回复率</th>
+                  <th>用户问题数</th>
+                  <th>已回复问题数</th>
+                  <th>问题回复率</th>
                   <th>未回复问题数</th>
                   <th>操作</th>
                 </tr>
@@ -304,9 +273,10 @@
           </div>
 
           <button type="button" class="detail-action-btn primary wide" id="detail-mock-test-btn">
-            开始模拟测试
-            <span>根据新上传知识文档测试问题回复情况</span>
+            开始历史问题回测
+            <span>基于当前绑定文档回测历史转人工 / 未回复问题覆盖情况</span>
           </button>
+          <div class="detail-test-result hidden" id="detail-test-result"></div>
         </div>
 
         <div class="table-scroll unanswered-detail-scroll">
@@ -341,7 +311,10 @@
         <aside class="kb-chunk-sidebar">
           <div class="kb-chunk-toolbar">
             <span class="kb-chunk-toolbar-title">切片列表</span>
-            <button type="button" class="btn-outline" id="detail-kb-chunk-refresh">刷新</button>
+            <div class="kb-chunk-toolbar-actions">
+              <button type="button" class="btn-outline" id="detail-kb-chunk-add">新增切片</button>
+              <button type="button" class="btn-outline" id="detail-kb-chunk-refresh">刷新</button>
+            </div>
           </div>
           <div class="kb-chunk-list" id="detail-kb-chunk-list"></div>
         </aside>
@@ -352,6 +325,14 @@
             <div class="kb-chunk-form-meta" id="detail-kb-chunk-meta"></div>
           </div>
           <div class="kb-chunk-form-grid">
+            <div class="form-group">
+              <label class="form-label">切片类型</label>
+              <select id="detail-kb-chunk-type" class="form-input">
+                <option value="text">文本</option>
+                <option value="faq">FAQ</option>
+                <option value="structured">结构化</option>
+              </select>
+            </div>
             <div class="form-group">
               <label class="form-label">切片标题</label>
               <input id="detail-kb-chunk-title" class="form-input" placeholder="如接口返回为空，可按需补充标题">

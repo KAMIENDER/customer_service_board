@@ -6,13 +6,17 @@
 import { MockData } from './mock-data.js';
 import { initAuth } from './auth.js';
 import {
-  getAllNumCached,
-  getConversationDetail,
-  getQuestions,
+  getCustomerServiceCategoryDetailFromDb,
+  runCustomerServiceCoverageBacktest,
+  getCustomerServiceCoverageBreakdownFromDb,
+  getCustomerServiceCoverageSummaryFromDb,
+  getCustomerServiceConversationDetailFromDb,
+  getTransferQuestionsFromDb,
   loadFilterParams,
   saveFilterParams
 } from './api.js';
 import {
+  addKnowledgeBaseChunk,
   deleteCoverageSceneBinding,
   getKnowledgeBaseFileInfo,
   getKnowledgeBaseChunkInfo,
@@ -46,6 +50,11 @@ let coverageBoardState = {
   answeredQuestions: MockData.coverageStats.answeredQuestions.value
 };
 
+let coverageCategoryState = buildUnansweredCoverageData(
+  MockData.coverageStats.totalQuestions.value,
+  MockData.coverageStats.answeredQuestions.value
+);
+
 const coverageCategoryExpandState = {
   general: new Set(),
   product: new Set()
@@ -53,15 +62,20 @@ const coverageCategoryExpandState = {
 
 let unansweredDetailModalState = {
   detailKey: '',
+  level1Code: '',
+  parentCode: '',
+  subCode: '',
   problemType: '',
   parentLabel: '',
   subLabel: '',
   unansweredCount: 0,
+  detailItems: [],
   files: [],
   loadingFiles: false,
   linkedDocs: [],
   activeDocId: '',
-  pickerSelectedDocIds: []
+  pickerSelectedDocIds: [],
+  lastTestResult: null
 };
 
 let detailChunkModalState = createDetailChunkModalState();
@@ -87,13 +101,15 @@ async function initCoverageStats(params = currentFilterParams) {
   showCoverageLoadingState();
 
   try {
-    const response = await getAllNumCached(params);
+    const [summaryResponse, breakdownResponse] = await Promise.all([
+      getCustomerServiceCoverageSummaryFromDb(params),
+      getCustomerServiceCoverageBreakdownFromDb(params)
+    ]);
 
-    if (response && response.code === 0 && response.data) {
-      const data = response.data;
-      const totalQuestions =
-        data.all_question_num !== undefined ? data.all_question_num : data.question_num;
-      const answeredQuestions = data.answer_question_num;
+    if (summaryResponse && summaryResponse.code === 0 && summaryResponse.data) {
+      const data = summaryResponse.data;
+      const totalQuestions = Number(data.total_question_num || 0);
+      const answeredQuestions = Number(data.answered_question_num || 0);
 
       if (totalQuestions !== undefined) {
         coverageBoardState.totalQuestions = totalQuestions;
@@ -114,12 +130,26 @@ async function initCoverageStats(params = currentFilterParams) {
       } else {
         setTextOrPlaceholder('stat-coverage-rate', '--');
       }
+    }
+
+    if (breakdownResponse && breakdownResponse.code === 0 && breakdownResponse.data) {
+      coverageCategoryState = {
+        generalRows: Array.isArray(breakdownResponse.data.general_rows) ? breakdownResponse.data.general_rows : [],
+        productRows: Array.isArray(breakdownResponse.data.product_rows) ? breakdownResponse.data.product_rows : []
+      };
     } else {
-      showCoverageErrorState();
+      coverageCategoryState = buildUnansweredCoverageData(
+        coverageBoardState.totalQuestions,
+        coverageBoardState.answeredQuestions
+      );
     }
   } catch (error) {
     console.warn('获取覆盖率统计失败:', error?.message || error);
     showCoverageErrorState();
+    coverageCategoryState = buildUnansweredCoverageData(
+      coverageBoardState.totalQuestions,
+      coverageBoardState.answeredQuestions
+    );
   }
 
   renderUnansweredCoverageBoard();
@@ -135,7 +165,6 @@ function showCoverageLoadingState() {
     el.classList.add('loading');
   });
 
-  setTableLoading('coverage-summary-body', 4);
   setTableLoading('general-questions-body', 7);
   setTableLoading('product-questions-body', 7);
 }
@@ -196,14 +225,8 @@ function animateValue(elementId, start, end, duration) {
 }
 
 function renderUnansweredCoverageBoard() {
-  const boardData = buildUnansweredCoverageData(
-    coverageBoardState.totalQuestions,
-    coverageBoardState.answeredQuestions
-  );
-
-  renderCoverageSummaryRows(boardData.summaryRows);
-  renderCoverageCategoryRows('general-questions-body', boardData.generalRows);
-  renderCoverageCategoryRows('product-questions-body', boardData.productRows);
+  renderCoverageCategoryRows('general-questions-body', coverageCategoryState.generalRows || []);
+  renderCoverageCategoryRows('product-questions-body', coverageCategoryState.productRows || []);
 }
 
 function buildUnansweredCoverageData(totalQuestions, answeredQuestions) {
@@ -340,6 +363,9 @@ function renderCoverageCategoryRows(tbodyId, rows) {
               ? `<a href="#"
                   class="link-text"
                   data-detail-key="${row.key}"
+                  data-detail-level1-code="${row.level1Code || ''}"
+                  data-detail-parent-code="${row.labelCode || ''}"
+                  data-detail-sub-code="${row.subLabelCode || ''}"
                   data-detail-type="${problemType}"
                   data-detail-parent="${row.label}"
                   data-detail-sub="${row.subLabel}"
@@ -446,8 +472,11 @@ function initUnansweredDetailModal() {
     if (!trigger) return;
 
     event.preventDefault();
-    openUnansweredDetailModal({
+    void openUnansweredDetailModal({
       detailKey: trigger.dataset.detailKey,
+      level1Code: trigger.dataset.detailLevel1Code || '',
+      parentCode: trigger.dataset.detailParentCode || '',
+      subCode: trigger.dataset.detailSubCode || '',
       problemType: trigger.dataset.detailType || '未回复问题',
       parentLabel: trigger.dataset.detailParent || '--',
       subLabel: trigger.dataset.detailSub || '--',
@@ -584,7 +613,7 @@ function initUnansweredDetailModal() {
   });
 }
 
-function openUnansweredDetailModal({ detailKey, problemType, parentLabel, subLabel, unansweredCount }) {
+async function openUnansweredDetailModal({ detailKey, level1Code, parentCode, subCode, problemType, parentLabel, subLabel, unansweredCount }) {
   const modal = document.getElementById('unanswered-detail-modal');
   const title = document.getElementById('unanswered-detail-title');
   const subtitle = document.getElementById('unanswered-detail-subtitle');
@@ -600,20 +629,22 @@ function openUnansweredDetailModal({ detailKey, problemType, parentLabel, subLab
     return;
   }
 
-  const detailItems = MockData.unansweredDetailBoard.detailSamples[detailKey]
-    || buildGenericDetailItems({ parentLabel, subLabel, unansweredCount, detailKey });
-
   unansweredDetailModalState = {
     detailKey,
+    level1Code,
+    parentCode,
+    subCode,
     problemType,
     parentLabel,
     subLabel,
     unansweredCount,
+    detailItems: [],
     files: [],
     loadingFiles: false,
     linkedDocs: [],
     activeDocId: '',
-    pickerSelectedDocIds: []
+    pickerSelectedDocIds: [],
+    lastTestResult: null
   };
 
   title.textContent = `${parentLabel} / ${subLabel} 未回复问题明细`;
@@ -624,28 +655,63 @@ function openUnansweredDetailModal({ detailKey, problemType, parentLabel, subLab
   typeCountEl.textContent = `未回复 ${unansweredCount}`;
   parentCountEl.textContent = `未回复 ${unansweredCount}`;
   subCountEl.textContent = `未回复 ${unansweredCount}`;
+  tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#9CA3AF;">正在加载明细...</td></tr>';
 
-  if (detailItems.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#9CA3AF;">暂无明细数据</td></tr>';
-  } else {
-    tbody.innerHTML = detailItems.map(item => `
-      <tr>
-        <td>${item.buyerNick}</td>
-        <td>
-          <div class="table-cell-main unanswered-question-cell">${item.question}</div>
-          <div class="table-cell-sub">${item.issue}</div>
-        </td>
-        <td><span class="tag warning">否</span></td>
-        <td>${item.createdAt}</td>
-        <td><a href="#" class="link-text" data-conversation-id="${item.conversationId}">查看具体内容</a></td>
-      </tr>
-    `).join('');
-  }
-
+  renderDetailTestResult();
   setDetailKnowledgePickerVisible(false);
   renderDetailKnowledgeStatus('正在加载已绑定知识文档...');
   modal.classList.add('show');
+  await loadCategoryDetailItems();
   void syncDetailKnowledgeBinding();
+}
+
+async function loadCategoryDetailItems() {
+  const tbody = document.getElementById('unanswered-detail-body');
+  if (!tbody) return;
+
+  try {
+    const response = await getCustomerServiceCategoryDetailFromDb({
+      ...currentFilterParams,
+      scene_level1_code: unansweredDetailModalState.level1Code,
+      scene_level2_code: unansweredDetailModalState.parentCode,
+      scene_level3_code: unansweredDetailModalState.subCode,
+      limit: Math.max(unansweredDetailModalState.unansweredCount, 20)
+    });
+
+    const detailItems = Array.isArray(response?.data?.questions)
+      ? response.data.questions.map(item => ({
+        buyerNick: item.buyer_nick || '-',
+        sellerNick: item.seller_nick || '-',
+        issue: item.issue || `${unansweredDetailModalState.parentLabel} / ${unansweredDetailModalState.subLabel}`,
+        question: item.question || '未提供问题内容',
+        createdAt: item.created_at || '--',
+        conversationId: item.conversation_id || ''
+      }))
+      : [];
+
+    unansweredDetailModalState.detailItems = detailItems;
+
+    if (detailItems.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#9CA3AF;">暂无明细数据</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = detailItems.map(item => `
+      <tr>
+        <td>${escapeHtml(item.buyerNick)}</td>
+        <td>
+          <div class="table-cell-main unanswered-question-cell">${escapeHtml(item.question)}</div>
+          <div class="table-cell-sub">${escapeHtml(item.issue)}</div>
+        </td>
+        <td><span class="tag warning">否</span></td>
+        <td>${escapeHtml(item.createdAt)}</td>
+        <td>${item.conversationId ? `<a href="#" class="link-text" data-conversation-id="${escapeHtml(item.conversationId)}">查看具体内容</a>` : '<span class="table-cell-sub">--</span>'}</td>
+      </tr>
+    `).join('');
+  } catch (error) {
+    unansweredDetailModalState.detailItems = [];
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:#EF4444;">加载明细失败：${escapeHtml(error?.message || '未知错误')}</td></tr>`;
+  }
 }
 
 function buildGenericDetailItems({ parentLabel, subLabel, unansweredCount, detailKey }) {
@@ -1000,45 +1066,54 @@ async function handleDetailKnowledgeUpload(files) {
 }
 
 async function runDetailKnowledgeMockCheck() {
-  if (!detailKnowledgeBaseEnabled) {
-    window.alert('知识库代理未配置，当前无法执行模拟测试。');
-    return;
-  }
-
-  const link = getCurrentDetailKnowledgeLink();
-  if (!link?.docId) {
-    window.alert('请先上传或确认一个知识文档，再进行模拟测试。');
-    return;
-  }
-
   const testBtn = document.getElementById('detail-mock-test-btn');
-  const originalText = testBtn?.firstChild?.textContent || '开始模拟测试';
+  const link = getCurrentDetailKnowledgeLink();
+  const detailItems = Array.isArray(unansweredDetailModalState.detailItems)
+    ? unansweredDetailModalState.detailItems.filter(item => item.conversationId)
+    : [];
+
+  if (!detailItems.length) {
+    unansweredDetailModalState.lastTestResult = {
+      tone: 'warning',
+      title: '暂无可回测问题',
+      summary: '当前分类下没有可用于回测的历史问题明细。',
+      testedAt: new Date().toISOString()
+    };
+    renderDetailTestResult();
+    window.alert('当前分类下没有可用于回测的历史问题明细。');
+    return;
+  }
+
+  const originalText = testBtn?.firstChild?.textContent || '开始历史问题回测';
   if (testBtn) {
     testBtn.disabled = true;
-    testBtn.firstChild.textContent = '检查知识文档状态中';
+    testBtn.firstChild.textContent = '历史问题回测中';
   }
 
   try {
-    const result = await getKnowledgeBaseFileInfo({ doc_id: link.docId, return_token_usage: true });
-    const record = result.record || {};
-    const processStatus = Number(record?.status?.process_status ?? link.processStatus ?? 0);
-
-    await saveDetailKnowledgeLink({
-      docId: link.docId,
-      docName: record.doc_name || link.docName || link.docId,
-      processStatus,
-      bindingSource: link.bindingSource || 'manual',
-      docType: record.doc_type || link.docType || ''
+    const response = await runCustomerServiceCoverageBacktest({
+      conversation_ids: detailItems.map(item => item.conversationId)
     });
-    renderDetailKnowledgeStatus('已刷新知识文档状态');
 
-    if (processStatus === 0) {
-      window.alert(`知识文档已导入完成：${record.doc_name || link.docName}\n当前切片数：${record.point_num || 0}\n可以继续去知识库页查看或修改对应 chunk。`);
-    } else {
-      window.alert(`知识文档当前状态：${formatKnowledgeProcessStatus(processStatus)}，处理完成后再进行下一步核验。`);
-    }
+    unansweredDetailModalState.lastTestResult = buildCoverageBacktestResult({
+      response,
+      detailItems,
+      docName: link?.docName || '',
+      processStatus: link?.processStatus,
+      pointNum: null
+    });
+    renderDetailTestResult();
+    window.alert(`历史问题回测已完成：共回测 ${detailItems.length} 条问题，结果已展示在按钮下方。`);
   } catch (error) {
-    window.alert(`模拟测试前检查失败：${error?.message || '未知错误'}`);
+    unansweredDetailModalState.lastTestResult = {
+      tone: 'error',
+      title: '历史问题回测失败',
+      summary: error?.message || '未知错误',
+      testedAt: new Date().toISOString(),
+      docName: link?.docName || link?.docId || ''
+    };
+    renderDetailTestResult();
+    window.alert(`历史问题回测失败：${error?.message || '未知错误'}`);
   } finally {
     if (testBtn) {
       testBtn.disabled = false;
@@ -1049,6 +1124,173 @@ async function runDetailKnowledgeMockCheck() {
 
 function formatKnowledgeProcessStatus(processStatus) {
   return DETAIL_KB_STATUS_LABELS[processStatus] || `状态 ${processStatus}`;
+}
+
+function renderDetailTestResult() {
+  const container = document.getElementById('detail-test-result');
+  if (!container) return;
+
+  const result = unansweredDetailModalState.lastTestResult;
+  if (!result) {
+    container.className = 'detail-test-result hidden';
+    container.innerHTML = '';
+    return;
+  }
+
+  const tone = ['success', 'warning', 'error'].includes(result.tone) ? result.tone : '';
+  const cases = Array.isArray(result.cases) ? result.cases : [];
+  container.className = `detail-test-result ${tone}`.trim();
+  container.innerHTML = `
+    <div class="detail-test-result-title">${escapeHtml(result.title || '最近一次历史问题回测结果')}</div>
+    <div class="detail-test-result-main">${escapeHtml(result.summary || '--')}</div>
+    <div class="detail-test-result-meta">
+      ${result.docName ? `<span>测试文档：${escapeHtml(result.docName)}</span>` : ''}
+      ${result.processStatus !== undefined ? `<span>文档状态：${escapeHtml(formatKnowledgeProcessStatus(result.processStatus))}</span>` : ''}
+      ${result.pointNum !== undefined ? `<span>切片数：${escapeHtml(String(result.pointNum))}</span>` : ''}
+      ${result.testedAt ? `<span>测试时间：${escapeHtml(formatDateTime(result.testedAt))}</span>` : ''}
+    </div>
+    ${result.metrics ? `
+      <div class="detail-test-metrics">
+        <div class="detail-test-metric">
+          <div class="detail-test-metric-label">回测问题数</div>
+          <div class="detail-test-metric-value">${escapeHtml(String(result.metrics.total || 0))}</div>
+        </div>
+        <div class="detail-test-metric">
+          <div class="detail-test-metric-label">命中覆盖数</div>
+          <div class="detail-test-metric-value">${escapeHtml(String(result.metrics.hit || 0))}</div>
+        </div>
+        <div class="detail-test-metric">
+          <div class="detail-test-metric-label">覆盖率</div>
+          <div class="detail-test-metric-value">${escapeHtml(result.metrics.coverageRate || '0%')}</div>
+        </div>
+        <div class="detail-test-metric">
+          <div class="detail-test-metric-label">回复可用率</div>
+          <div class="detail-test-metric-value">${escapeHtml(result.metrics.usableRate || '0%')}</div>
+        </div>
+      </div>
+    ` : ''}
+    ${cases.length ? `
+      <div class="detail-test-cases">
+        <div class="detail-test-cases-head">
+          <div>历史问题</div>
+          <div>覆盖结果</div>
+          <div>执行动作</div>
+          <div>回测回复内容</div>
+          <div>回复评价</div>
+        </div>
+        ${cases.map(item => `
+          <div class="detail-test-case">
+            <div>
+              <div class="detail-test-case-main">${escapeHtml(item.question || '--')}</div>
+              <div class="detail-test-case-sub">${escapeHtml(item.issue || '')}</div>
+            </div>
+            <div><span class="detail-test-pill ${item.hit ? 'hit' : 'miss'}">${item.hit ? '已覆盖' : '未覆盖'}</span></div>
+            <div>
+              <div class="detail-test-case-main">${escapeHtml(item.chunkTitle || '--')}</div>
+              <div class="detail-test-case-sub">${escapeHtml(item.chunkHint || '')}</div>
+            </div>
+            <div>
+              <div class="detail-test-case-main">${escapeHtml(item.reply || '--')}</div>
+            </div>
+            <div><span class="detail-test-pill ${item.assessment === '可直接使用' ? 'good' : 'partial'}">${escapeHtml(item.assessment || '--')}</span></div>
+          </div>
+        `).join('')}
+      </div>
+    ` : ''}
+    <div class="detail-test-result-note">当前面板展示的是历史问题回测结果：按历史会话逐条调用回测接口，判断是否命中可回复内容。</div>
+  `;
+}
+
+function buildMockBacktestResult({ docName, processStatus, pointNum, detailItems, parentLabel, subLabel }) {
+  const items = Array.isArray(detailItems) ? detailItems.slice(0, 5) : [];
+  const cases = items.map((item, index) => {
+    const hit = processStatus === 0 ? index % 3 !== 1 : index === 0;
+    const usable = hit && index % 2 === 0;
+    return {
+      question: item.question,
+      issue: item.issue,
+      hit,
+      chunkTitle: hit ? `${subLabel} · Chunk ${index + 1}` : '--',
+      chunkHint: hit ? `${parentLabel} 相关知识片段` : '当前未命中可用知识',
+      reply: hit
+        ? `【模拟回复】关于“${item.question}”，当前知识文档已能提供对应说明，建议优先返回标准话术后再根据上下文补充。`
+        : `【模拟回复】当前知识库里还没有足够覆盖“${item.question}”的内容，建议补充对应 chunk 或完善场景话术。`,
+      assessment: hit ? (usable ? '可直接使用' : '需人工润色') : '需补充知识'
+    };
+  });
+
+  const total = cases.length;
+  const hit = cases.filter(item => item.hit).length;
+  const usable = cases.filter(item => item.assessment === '可直接使用').length;
+
+  return {
+    tone: processStatus === 0 ? 'success' : 'warning',
+    title: '历史问题回测结果',
+    summary: processStatus === 0
+      ? '已基于当前绑定文档生成一版历史问题回测结果，用于预览覆盖率和回复效果。'
+      : '当前文档还未完全可用，先按 mock 方式展示回测面板结构。',
+    testedAt: new Date().toISOString(),
+    docName,
+    processStatus,
+    pointNum,
+    metrics: {
+      total,
+      hit,
+      coverageRate: total ? formatPercent((hit / total) * 100) : '0%',
+      usableRate: total ? formatPercent((usable / total) * 100) : '0%'
+    },
+    cases
+  };
+}
+
+function buildCoverageBacktestResult({ response, detailItems, docName, processStatus, pointNum }) {
+  const resultRows = Array.isArray(response?.data?.results) ? response.data.results : [];
+  const resultMap = new Map(resultRows.map(item => [item.conversation_id || '', item]));
+  const cases = detailItems.map(item => {
+    const testResult = resultMap.get(item.conversationId) || {};
+    const reply = String(testResult.reply || '').trim();
+    const action = String(testResult.action || '').trim();
+    const hit = Boolean(testResult.hit);
+    const success = testResult.success !== false;
+    const assessment = !success
+      ? '接口异常'
+      : hit
+        ? '可直接使用'
+        : '需补充知识';
+
+    return {
+      question: item.question,
+      issue: item.issue,
+      hit,
+      chunkTitle: action || '--',
+      chunkHint: testResult.reason ? `原因：${testResult.reason}` : (success ? '未返回额外原因' : (testResult.message || '请求失败')),
+      reply: reply || (success ? '转人工' : '--'),
+      assessment
+    };
+  });
+
+  const total = cases.length;
+  const hit = cases.filter(item => item.hit).length;
+  const usable = cases.filter(item => item.assessment === '可直接使用').length;
+
+  return {
+    tone: total > 0 && hit > 0 ? 'success' : 'warning',
+    title: '历史问题回测结果',
+    summary: total > 0
+      ? `已对当前分类下的历史问题完成真实回测，可查看每条问题的回复内容与转人工结果。`
+      : '当前分类下暂无可回测的历史问题。',
+    testedAt: new Date().toISOString(),
+    docName: docName || undefined,
+    processStatus: processStatus ?? undefined,
+    pointNum: Number.isFinite(pointNum) ? pointNum : undefined,
+    metrics: {
+      total,
+      hit,
+      coverageRate: total ? formatPercent((hit / total) * 100) : '0.00',
+      usableRate: total ? formatPercent((usable / total) * 100) : '0.00'
+    },
+    cases
+  };
 }
 
 function normalizeCoverageBindingRecord(record, fallback = {}) {
@@ -1078,6 +1320,10 @@ function formatDateTime(value) {
       return date.toLocaleString('zh-CN', { hour12: false });
     }
   }
+  const parsed = new Date(value);
+  if (!Number.isNaN(parsed.getTime())) {
+    return parsed.toLocaleString('zh-CN', { hour12: false });
+  }
   return String(value);
 }
 
@@ -1096,6 +1342,8 @@ function createDetailChunkModalState() {
     detailLoading: false,
     selectedPointId: '',
     selectedChunk: null,
+    selectedChunkType: 'text',
+    isCreating: false,
     saving: false,
     error: ''
   };
@@ -1105,15 +1353,18 @@ function initDetailChunkModal() {
   const modal = document.getElementById('detail-kb-chunk-modal');
   const closeBtn = document.getElementById('detail-kb-chunk-close');
   const cancelBtn = document.getElementById('detail-kb-chunk-cancel');
+  const addBtn = document.getElementById('detail-kb-chunk-add');
   const refreshBtn = document.getElementById('detail-kb-chunk-refresh');
   const saveBtn = document.getElementById('detail-kb-chunk-save');
   const list = document.getElementById('detail-kb-chunk-list');
   const fieldAdd = document.getElementById('detail-kb-chunk-field-add');
   const fieldsList = document.getElementById('detail-kb-chunk-fields-list');
+  const typeInput = document.getElementById('detail-kb-chunk-type');
   const content = document.getElementById('detail-kb-chunk-content');
 
   if (closeBtn) closeBtn.addEventListener('click', closeDetailChunkModal);
   if (cancelBtn) cancelBtn.addEventListener('click', closeDetailChunkModal);
+  if (addBtn) addBtn.addEventListener('click', startDetailChunkCreate);
   if (refreshBtn) refreshBtn.addEventListener('click', () => refreshDetailChunkList());
   if (saveBtn) saveBtn.addEventListener('click', () => handleDetailChunkSave());
   if (fieldAdd) fieldAdd.addEventListener('click', () => {
@@ -1136,6 +1387,14 @@ function initDetailChunkModal() {
         autoResizeTextarea(event.target);
       }
       syncDetailChunkFieldTip();
+    });
+  }
+
+  if (typeInput) {
+    typeInput.addEventListener('change', event => {
+      detailChunkModalState.selectedChunkType = String(event.target.value || 'text');
+      syncDetailChunkTypeUI();
+      renderDetailChunkModal();
     });
   }
 
@@ -1172,7 +1431,7 @@ function closeDetailChunkModal() {
   renderDetailChunkModal();
 }
 
-async function refreshDetailChunkList() {
+async function refreshDetailChunkList(preferredPointId = '') {
   if (!detailChunkModalState.docId) return;
 
   detailChunkModalState.loading = true;
@@ -1187,7 +1446,11 @@ async function refreshDetailChunkList() {
     detailChunkModalState.chunks = result.records || [];
     detailChunkModalState.totalNum = Number(result.totalNum || detailChunkModalState.chunks.length || 0);
     detailChunkModalState.loading = false;
-    detailChunkModalState.selectedPointId = detailChunkModalState.chunks[0]?.point_id || '';
+    if (preferredPointId) {
+      detailChunkModalState.selectedPointId = preferredPointId;
+    } else if (!detailChunkModalState.isCreating) {
+      detailChunkModalState.selectedPointId = detailChunkModalState.chunks[0]?.point_id || '';
+    }
     renderDetailChunkModal();
 
     if (detailChunkModalState.selectedPointId) {
@@ -1204,6 +1467,7 @@ async function refreshDetailChunkList() {
 }
 
 async function loadSelectedDetailChunkDetail(pointId) {
+  detailChunkModalState.isCreating = false;
   detailChunkModalState.selectedPointId = pointId;
   detailChunkModalState.detailLoading = true;
   detailChunkModalState.error = '';
@@ -1222,32 +1486,54 @@ async function loadSelectedDetailChunkDetail(pointId) {
 }
 
 async function handleDetailChunkSave() {
-  if (!detailChunkModalState.selectedPointId || !detailChunkModalState.selectedChunk) return;
-
   const contentInput = document.getElementById('detail-kb-chunk-content');
   const titleInput = document.getElementById('detail-kb-chunk-title');
   const questionInput = document.getElementById('detail-kb-chunk-question');
+  const typeInput = document.getElementById('detail-kb-chunk-type');
   const fields = collectDetailChunkFields();
+  const chunkType = String(typeInput?.value || detailChunkModalState.selectedChunkType || inferDetailChunkType());
+
+  if (!detailChunkModalState.isCreating && (!detailChunkModalState.selectedPointId || !detailChunkModalState.selectedChunk)) return;
 
   detailChunkModalState.saving = true;
   detailChunkModalState.error = '';
   renderDetailChunkModal();
 
   try {
-    await updateKnowledgeBaseChunk({
-      point_id: detailChunkModalState.selectedPointId,
-      chunk_title: titleInput?.value || '',
-      question: questionInput?.value || '',
-      content: contentInput?.value || '',
-      ...(fields.length > 0 ? { fields } : {})
-    });
-    detailChunkModalState.saving = false;
-    await loadSelectedDetailChunkDetail(detailChunkModalState.selectedPointId);
-    await refreshDetailChunkList();
-    window.alert('切片内容已保存');
+    if (detailChunkModalState.isCreating) {
+      const result = await addKnowledgeBaseChunk(buildDetailChunkPayload({
+        mode: 'create',
+        docId: detailChunkModalState.docId,
+        chunkType,
+        title: titleInput?.value || '',
+        question: questionInput?.value || '',
+        content: contentInput?.value || '',
+        fields
+      }));
+      const createdPointId = String(result?.data?.data?.point_id || '');
+      detailChunkModalState.isCreating = false;
+      detailChunkModalState.saving = false;
+      await refreshDetailChunkList();
+      if (createdPointId) {
+        await loadSelectedDetailChunkDetail(createdPointId);
+      }
+      window.alert('新切片已创建');
+    } else {
+      await updateKnowledgeBaseChunk({
+        point_id: detailChunkModalState.selectedPointId,
+        chunk_title: titleInput?.value || '',
+        question: questionInput?.value || '',
+        content: contentInput?.value || '',
+        ...(fields.length > 0 ? { fields } : {})
+      });
+      detailChunkModalState.saving = false;
+      await loadSelectedDetailChunkDetail(detailChunkModalState.selectedPointId);
+      await refreshDetailChunkList();
+      window.alert('切片内容已保存');
+    }
   } catch (error) {
     detailChunkModalState.saving = false;
-    detailChunkModalState.error = error?.message || '切片更新失败';
+    detailChunkModalState.error = error?.message || (detailChunkModalState.isCreating ? '切片新增失败' : '切片更新失败');
     renderDetailChunkModal();
   }
 }
@@ -1269,8 +1555,8 @@ function renderDetailChunkModal() {
 
   const saveButton = document.getElementById('detail-kb-chunk-save');
   if (saveButton) {
-    saveButton.disabled = detailChunkModalState.saving || !detailChunkModalState.selectedPointId;
-    saveButton.textContent = detailChunkModalState.saving ? '保存中...' : '保存修改';
+    saveButton.disabled = detailChunkModalState.saving || (!detailChunkModalState.isCreating && !detailChunkModalState.selectedPointId);
+    saveButton.textContent = detailChunkModalState.saving ? '保存中...' : (detailChunkModalState.isCreating ? '新增切片' : '保存修改');
   }
 
   renderDetailChunkList();
@@ -1287,7 +1573,7 @@ function renderDetailChunkList() {
   }
 
   if (detailChunkModalState.chunks.length === 0) {
-    container.innerHTML = '<div class="kb-chunk-empty">当前文档暂无切片</div>';
+    container.innerHTML = '<div class="kb-chunk-empty">当前文档暂无切片，可点击“新增切片”创建第一条</div>';
     return;
   }
 
@@ -1316,10 +1602,16 @@ function renderDetailChunkDetail() {
   }
 
   panel.classList.remove('loading');
+  if (detailChunkModalState.isCreating) {
+    populateDetailChunkForm(null);
+    syncDetailChunkTypeUI();
+    return;
+  }
   populateDetailChunkForm(detailChunkModalState.selectedChunk);
 }
 
 function populateDetailChunkForm(detail) {
+  const typeInput = document.getElementById('detail-kb-chunk-type');
   const titleInput = document.getElementById('detail-kb-chunk-title');
   const questionInput = document.getElementById('detail-kb-chunk-question');
   const contentInput = document.getElementById('detail-kb-chunk-content');
@@ -1327,15 +1619,18 @@ function populateDetailChunkForm(detail) {
   const metaEl = document.getElementById('detail-kb-chunk-meta');
 
   if (!detail) {
+    if (typeInput) typeInput.value = detailChunkModalState.selectedChunkType || inferDetailChunkType();
     if (titleInput) titleInput.value = '';
     if (questionInput) questionInput.value = '';
     if (contentInput) contentInput.value = '';
     if (fieldsList) fieldsList.innerHTML = '';
-    if (metaEl) metaEl.textContent = '';
+    if (metaEl) metaEl.textContent = detailChunkModalState.isCreating ? `新增模式  |  类型：${typeInput?.value || detailChunkModalState.selectedChunkType || 'text'}` : '';
+    syncDetailChunkTypeUI();
     syncDetailChunkFieldTip();
     return;
   }
 
+  if (typeInput) typeInput.value = String(detail.chunk_type || inferDetailChunkType());
   if (titleInput) titleInput.value = String(detail.chunk_title || '');
   if (questionInput) questionInput.value = normalizeChunkQuestion(detail);
   if (contentInput) {
@@ -1356,6 +1651,7 @@ function populateDetailChunkForm(detail) {
       detail.chunk_status ? `状态：${detail.chunk_status}` : ''
     ].filter(Boolean).join('  |  ');
   }
+  syncDetailChunkTypeUI();
 }
 
 function appendDetailChunkFieldRow(field = { field_name: '', field_value: '' }) {
@@ -1385,6 +1681,96 @@ function collectDetailChunkFields() {
       field_value: String(row.querySelector('[data-detail-field-value]')?.value || '').trim()
     }))
     .filter(field => field.field_name || field.field_value);
+}
+
+function startDetailChunkCreate() {
+  detailChunkModalState.isCreating = true;
+  detailChunkModalState.selectedPointId = '';
+  detailChunkModalState.selectedChunk = null;
+  detailChunkModalState.detailLoading = false;
+  detailChunkModalState.error = '';
+  detailChunkModalState.selectedChunkType = inferDetailChunkType();
+  renderDetailChunkModal();
+}
+
+function inferDetailChunkType() {
+  const value = String(detailChunkModalState.selectedChunk?.chunk_type || detailChunkModalState.chunks[0]?.chunk_type || '').trim();
+  if (value === 'structured' || value === 'faq' || value === 'text') {
+    return value;
+  }
+  const activeLink = getCurrentDetailKnowledgeLink();
+  const docType = String(activeLink?.docType || '').toLowerCase();
+  if (docType === 'xlsx' || docType === 'xls' || docType === 'csv') {
+    return 'structured';
+  }
+  return 'text';
+}
+
+function syncDetailChunkTypeUI() {
+  const typeInput = document.getElementById('detail-kb-chunk-type');
+  const titleInput = document.getElementById('detail-kb-chunk-title');
+  const questionInput = document.getElementById('detail-kb-chunk-question');
+  const contentInput = document.getElementById('detail-kb-chunk-content');
+  const fieldsSection = document.getElementById('detail-kb-chunk-fields-section');
+  const currentType = String(typeInput?.value || detailChunkModalState.selectedChunkType || inferDetailChunkType());
+
+  if (typeInput) {
+    typeInput.disabled = !detailChunkModalState.isCreating;
+  }
+
+  if (questionInput) {
+    questionInput.disabled = currentType !== 'faq';
+    questionInput.placeholder = currentType === 'faq' ? 'FAQ 切片需要填写问题问法' : '仅 FAQ 切片需要填写问题问法';
+  }
+
+  if (contentInput) {
+    contentInput.placeholder = currentType === 'structured'
+      ? '结构化切片主要由下方字段生成，可按需补充说明'
+      : '请输入切片内容';
+  }
+
+  if (fieldsSection) {
+    fieldsSection.style.display = currentType === 'structured' ? '' : 'none';
+  }
+
+  if (titleInput) {
+    titleInput.placeholder = currentType === 'text'
+      ? '文本切片可按需补充标题'
+      : '如接口返回为空，可按需补充标题';
+  }
+}
+
+function buildDetailChunkPayload({ mode, docId, chunkType, title, question, content, fields }) {
+  const payload = {
+    chunk_type: chunkType
+  };
+
+  if (mode === 'create') {
+    if (!docId) throw new Error('doc_id 不能为空');
+    payload.doc_id = docId;
+  }
+
+  if (title.trim()) payload.chunk_title = title.trim();
+
+  if (chunkType === 'structured') {
+    if (!fields.length) {
+      throw new Error('结构化切片至少需要填写 1 个字段');
+    }
+    payload.fields = fields;
+    return payload;
+  }
+
+  if (chunkType === 'faq') {
+    if (!question.trim()) throw new Error('FAQ 切片需要填写问题问法');
+    if (!content.trim()) throw new Error('FAQ 切片需要填写切片内容');
+    payload.question = question.trim();
+    payload.content = content.trim();
+    return payload;
+  }
+
+  if (!content.trim()) throw new Error('文本切片需要填写切片内容');
+  payload.content = content.trim();
+  return payload;
 }
 
 function syncDetailChunkFieldTip() {
@@ -1455,7 +1841,7 @@ async function loadQuestionsPage(page) {
   tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#9CA3AF;">加载中...</td></tr>';
 
   try {
-    const response = await getQuestions({
+    const response = await getTransferQuestionsFromDb({
       ...currentFilterParams,
       offset,
       limit: questionsPageState.pageSize
@@ -1708,7 +2094,7 @@ async function loadConversationDetail(conversationId) {
   }
 
   try {
-    const response = await getConversationDetail(conversationId);
+    const response = await getCustomerServiceConversationDetailFromDb(conversationId);
     if (response && response.code === 0 && response.data) {
       let messages = [];
       if (response.data.contents && Array.isArray(response.data.contents)) {
@@ -1790,7 +2176,12 @@ function percentage(numerator, denominator) {
 }
 
 function formatPercent(value) {
-  return Number(value).toFixed(2);
+  const number = Number(value);
+  if (!Number.isFinite(number)) {
+    return '0.00';
+  }
+  const normalized = number > 0 && number <= 1 ? number * 100 : number;
+  return normalized.toFixed(2);
 }
 
 function formatDate(date) {

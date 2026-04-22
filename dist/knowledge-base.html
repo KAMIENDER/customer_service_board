@@ -12,10 +12,10 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
   <!-- Custom Styles -->
-  <script type="module" crossorigin src="/assets/js/knowledgeBase-CSIfCdAR.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/js/auth-BxqnkiXd.js">
-  <link rel="modulepreload" crossorigin href="/assets/js/knowledge-base-provider-DX9KxaGO.js">
-  <link rel="stylesheet" crossorigin href="/assets/css/auth-Bl2_pa_s.css">
+  <script type="module" crossorigin src="/assets/js/knowledgeBase-B23pq12O.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/js/auth-BbfHUeOg.js">
+  <link rel="modulepreload" crossorigin href="/assets/js/knowledge-base-provider-CgptQA2b.js">
+  <link rel="stylesheet" crossorigin href="/assets/css/auth-RFdmn4YS.css">
 </head>
 <body>
   <div class="app-container">
@@ -47,14 +47,6 @@
           <a href="knowledge-base.html" class="nav-item active">
             <span class="nav-item-icon">📚</span>
             <span>知识库管理</span>
-          </a>
-          <a href="#" class="nav-item">
-            <span class="nav-item-icon">⚙️</span>
-            <span>规则引擎</span>
-          </a>
-          <a href="#" class="nav-item">
-            <span class="nav-item-icon">📜</span>
-            <span>训练历史</span>
           </a>
         </div>
       </nav>
@@ -185,7 +177,10 @@
         <aside class="kb-chunk-sidebar">
           <div class="kb-chunk-toolbar">
             <span class="kb-chunk-toolbar-title">切片列表</span>
-            <button type="button" class="btn-outline" id="kb-chunk-refresh">刷新</button>
+            <div class="kb-chunk-toolbar-actions">
+              <button type="button" class="btn-outline" id="kb-chunk-add">新增切片</button>
+              <button type="button" class="btn-outline" id="kb-chunk-refresh">刷新</button>
+            </div>
           </div>
           <div class="kb-chunk-list" id="kb-chunk-list"></div>
         </aside>
@@ -196,6 +191,14 @@
             <div class="kb-chunk-form-meta" id="kb-chunk-meta"></div>
           </div>
           <div class="kb-chunk-form-grid">
+            <div class="form-group">
+              <label class="form-label">切片类型</label>
+              <select id="kb-chunk-type" class="form-input">
+                <option value="text">文本</option>
+                <option value="faq">FAQ</option>
+                <option value="structured">结构化</option>
+              </select>
+            </div>
             <div class="form-group">
               <label class="form-label">切片标题</label>
               <input id="kb-chunk-title" class="form-input" placeholder="如接口返回为空，可按需补充标题">

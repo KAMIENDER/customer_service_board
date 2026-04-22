@@ -46,14 +46,6 @@
             <span class="nav-item-icon">📚</span>
             <span>知识库管理</span>
           </a>
-          <a href="#" class="nav-item">
-            <span class="nav-item-icon">⚙️</span>
-            <span>规则引擎</span>
-          </a>
-          <a href="#" class="nav-item">
-            <span class="nav-item-icon">📜</span>
-            <span>训练历史</span>
-          </a>
         </div>
       </nav>
       
@@ -117,18 +109,6 @@
         <!-- 页面标题 -->
         <div class="page-header">
           <h2 class="page-title">AI 接待效率看板</h2>
-          <p class="page-subtitle">按《数据看板需求.xlsx》拆成 4 个业务 tab，并保留 Token 消耗趋势 tab 方便一起查看</p>
-        </div>
-
-        <div class="dashboard-summary-banner">
-          <div>
-            <div class="dashboard-summary-title">当前视图以 Excel 版字段结构展示</div>
-            <div class="dashboard-summary-subtitle">已接入接口字段直接显示，未接入字段按现有聚合数据推导，便于先对齐版式和口径</div>
-          </div>
-          <div class="dashboard-summary-meta">
-            <span class="summary-pill">需求基准：数据看板需求.xlsx</span>
-            <span class="summary-pill muted">日期筛选对接待类 4 个 tab 同步生效</span>
-          </div>
         </div>
 
         <div class="dashboard-tabs-shell">
@@ -194,7 +174,7 @@
               <h3 class="chart-title">AI全自动接待未转人工效率</h3>
               <p class="table-subtitle">按“用户回话 3 句话以内 / 3 句话以上”拆分自动接待会话的询单转化表现</p>
             </div>
-            <span class="summary-pill muted">当前为接口聚合值推导展示</span>
+            <span class="summary-pill muted">金额相关字段暂隐藏，仅展示可确认的人数与转化率</span>
           </div>
 
           <div class="table-container workbook-table-card">
@@ -206,9 +186,7 @@
                     <th>接待人数</th>
                     <th>询单人数</th>
                     <th>询单成交人数（退款前）</th>
-                    <th>询单成交金额（退款前）</th>
                     <th>询单转化率（退款前）</th>
-                    <th>询单成交客单价</th>
                   </tr>
                 </thead>
                 <tbody id="auto-efficiency-table-body"></tbody>
@@ -223,7 +201,7 @@
               <h3 class="chart-title">AI辅助人工接待效率</h3>
               <p class="table-subtitle">聚焦人工介入后的接待、询单与成交表现，保持和 Excel 第三块字段一致</p>
             </div>
-            <span class="summary-pill muted">辅助接待人数当前按转人工人数映射</span>
+            <span class="summary-pill muted">金额相关字段暂隐藏，仅展示可确认的人数与转化率</span>
           </div>
 
           <div class="stats-grid workbook-kpi-grid assist-grid">
@@ -242,20 +220,10 @@
               <div class="stat-label">询单成交人数（退款前）</div>
               <div class="stat-value" id="assist-stat-order-count">--</div>
             </div>
-            <div class="stat-card cyan">
-              <div class="stat-header"><div class="stat-icon cyan">💰</div></div>
-              <div class="stat-label">询单成交金额（退款前）</div>
-              <div class="stat-value small" id="assist-stat-order-amount">--</div>
-            </div>
             <div class="stat-card purple">
               <div class="stat-header"><div class="stat-icon purple">📈</div></div>
               <div class="stat-label">询单转化率（退款前）</div>
               <div class="stat-value small"><span id="assist-stat-conversion-rate">--</span><span class="stat-suffix">%</span></div>
-            </div>
-            <div class="stat-card" style="background: linear-gradient(135deg, #FEF2F2 0%, #FECACA 100%);">
-              <div class="stat-header"><div class="stat-icon red">🧾</div></div>
-              <div class="stat-label">询单成交客单价</div>
-              <div class="stat-value small" id="assist-stat-aov">--</div>
             </div>
           </div>
         </section>
